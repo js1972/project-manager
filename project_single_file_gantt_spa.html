@@ -105,7 +105,7 @@
       </div>
     </header>
 
-    <div class="rounded-2xl bg-white shadow ring-1 ring-gray-200 overflow-hidden flex-1 flex flex-col">
+    <div class="rounded-2xl bg-white shadow ring-1 ring-gray-200 overflow-hidden flex-1 flex flex-col min-h-0">
       <!-- Column headers -->
       <div id="headerGrid" class="grid" style="grid-template-columns: var(--left-w) 8px 1fr;">
         <div class="px-4 py-2 text-xs font-medium text-gray-600 border-b">
@@ -124,8 +124,8 @@
         <div class="px-4 py-2 text-xs font-medium text-gray-600 border-b">Timeline</div>
       </div>
 
-      <div id="mainGrid" class="grid flex-1" style="grid-template-columns: var(--left-w) 8px 1fr;">
-        <div id="leftPane" class="overflow-y-auto">
+      <div id="mainGrid" class="grid flex-1 min-h-0" style="grid-template-columns: var(--left-w) 8px 1fr;">
+        <div id="leftPane" class="overflow-y-auto min-h-0">
           <div id="leftSpacer" class="sticky top-0 z-20 bg-white border-b" style="height: var(--scale-h);"></div>
           <ul id="taskList"></ul>
         </div>
@@ -133,7 +133,7 @@
         <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize task panel"></div>
 
         <!-- Right: single scroll container for BOTH scale + chart (no syncing needed) -->
-        <div id="rightPane" class="relative overflow-auto scrollbar-thin">
+        <div id="rightPane" class="relative overflow-auto scrollbar-thin min-h-0">
           <div id="scaleSticky" class="sticky top-0 z-20 bg-white border-b">
             <div id="scale" class="text-xs text-gray-600 select-none"></div>
           </div>
