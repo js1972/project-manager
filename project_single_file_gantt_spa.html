@@ -59,10 +59,10 @@
     .palette-label { font-size: 11px; color: rgba(0,0,0,0.55); margin-bottom: 6px; user-select:none; }
 
     /* Left pane: keep Task name visible when narrowing */
-    .task-row-grid { grid-template-columns: 20px 26px 1fr 104px 104px 72px 28px; }
-    body.left-hide-dur .task-row-grid { grid-template-columns: 20px 26px 1fr 104px 104px 28px; }
-    body.left-hide-enddur .task-row-grid { grid-template-columns: 20px 26px 1fr 104px 28px; }
-    body.left-hide-dates .task-row-grid { grid-template-columns: 20px 26px 1fr 28px; }
+    .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 104px 104px 72px 28px; }
+    body.left-hide-dur .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 104px 104px 28px; }
+    body.left-hide-enddur .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 104px 28px; }
+    body.left-hide-dates .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 28px; }
 
     body.left-hide-dur .col-dur,
     body.left-hide-enddur .col-end,
@@ -113,6 +113,7 @@
             <div></div>
             <div></div>
             <div>Task</div>
+            <div class="text-left col-dep">Depends</div>
             <div class="text-right col-start">Start</div>
             <div class="text-right col-end">End</div>
             <div class="text-right col-dur">Dur</div>
@@ -157,7 +158,7 @@
   const UI_KEY = 'bdc-fre-gantt-ui-v1';
   const EMBEDDED_DATA_ID = 'embeddedData';
 
-  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string}} Task */
+  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string,dependsOnId?:string}} Task */
   /** @type {Task[]} */
   let tasks = [];
   let filteredIds = new Set();
@@ -185,6 +186,11 @@
 
   const uid = () => Math.random().toString(36).slice(2, 10);
   const toDate = (iso) => new Date(iso + 'T00:00:00Z');
+  const toDateSafe = (iso) => {
+    if (typeof iso !== 'string') return null;
+    const d = new Date(iso + 'T00:00:00Z');
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
   const toISO = (d) => d.toISOString().slice(0,10);
   const addDays = (d, n) => new Date(d.getTime() + n*DAY_MS);
   const addMonthsUTC = (d, months) => {
@@ -265,6 +271,7 @@
   ];
   const DEFAULT_TASK_COLOR = '#4f46e5';
   const DEFAULT_MILESTONE_COLOR = '#9333ea';
+  const DEP_LINE_COLOR = '#94a3b8';
 
   function escapeHtml(s) {
     return String(s)
@@ -331,20 +338,93 @@
 
   function normalizeTasks() {
     // Ensure all tasks comply with business-day rules.
-    tasks = tasks.map(t => {
+    if (!Array.isArray(tasks)) {
+      tasks = [];
+      return;
+    }
+    tasks = tasks
+      .filter(t => t && typeof t === 'object')
+      .map(t => {
       const out = { ...t };
-      const s = snapStartToBusinessDay(toDate(out.start));
+      if (typeof out.id !== 'string' || !out.id) out.id = uid();
+      if (typeof out.name !== 'string') out.name = 'Untitled task';
+      if (out.dependsOnId && typeof out.dependsOnId !== 'string') delete out.dependsOnId;
+      const startRaw = toDateSafe(out.start);
+      const endRaw = toDateSafe(out.end);
+      const baseStart = startRaw || endRaw || todayUTC();
+      const s = snapStartToBusinessDay(baseStart);
       out.start = toISO(s);
       if (out.milestone) {
         delete out.end;
         return out;
       }
-      const e0 = out.end ? toDate(out.end) : s;
+      const e0 = endRaw || startRaw || s;
       let e = snapEndToBusinessDay(e0);
       if (e < s) e = s;
       out.end = toISO(e);
       return out;
     });
+  }
+
+  function getTaskById(id) {
+    return tasks.find(t => t.id === id);
+  }
+
+  function getTaskEndDate(t) {
+    const s = toDate(t.start);
+    return t.milestone ? s : toDate(t.end || t.start);
+  }
+
+  function pruneDependencies() {
+    const ids = new Set(tasks.map(t => t.id));
+    tasks.forEach(t => {
+      if (!t.dependsOnId) {
+        delete t.dependsOnId;
+        return;
+      }
+      if (!ids.has(t.dependsOnId) || t.dependsOnId === t.id) delete t.dependsOnId;
+    });
+  }
+
+  function applyDependencies() {
+    pruneDependencies();
+    const visiting = new Set();
+    const visited = new Set();
+
+    function enforce(t) {
+      if (visited.has(t.id)) return;
+      if (!t.dependsOnId) {
+        visited.add(t.id);
+        return;
+      }
+      if (visiting.has(t.id)) return;
+      const pred = getTaskById(t.dependsOnId);
+      if (!pred) {
+        delete t.dependsOnId;
+        visited.add(t.id);
+        return;
+      }
+      visiting.add(t.id);
+      enforce(pred);
+      visiting.delete(t.id);
+
+      const predEnd = getTaskEndDate(pred);
+      const minStart = addBusinessDays(predEnd, 1);
+      const curStart = toDate(t.start);
+      if (curStart < minStart) {
+        if (t.milestone) {
+          t.start = toISO(minStart);
+        } else {
+          const curEnd = toDate(t.end || t.start);
+          const durBiz = Math.max(1, businessDaysInclusive(curStart, curEnd));
+          t.start = toISO(minStart);
+          t.end = toISO(addBusinessDays(minStart, durBiz - 1));
+        }
+      }
+      visited.add(t.id);
+    }
+
+    tasks.forEach(enforce);
   }
 
   function loadEmbeddedPayload() {
@@ -360,6 +440,7 @@
     if (!payload || !Array.isArray(payload.tasks)) return false;
     tasks = payload.tasks;
     normalizeTasks();
+    applyDependencies();
     const embeddedTitle = payload.meta && typeof payload.meta.title === 'string'
       ? payload.meta.title.trim()
       : '';
@@ -388,6 +469,13 @@
     return '<!DOCTYPE html>\n' + cloned.outerHTML;
   }
 
+  function updateDependencyLabels(t) {
+    const label = (t.name || '').trim() || 'Untitled task';
+    document.querySelectorAll(`select[data-deps] option[value="${t.id}"]`).forEach(opt => {
+      opt.textContent = label;
+    });
+  }
+
   function updateTaskNameInGantt(t) {
     if (!els.grid) return;
     const el = els.grid.querySelector(`[data-id="${t.id}"]`);
@@ -404,12 +492,11 @@
 
   function sampleTasks() {
     const base = snapStartToBusinessDay(todayUTC());
-    return [
-      { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5' },
-      { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9' },
-      { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea' },
-      { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981' },
-    ];
+    const t1 = { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5' };
+    const t2 = { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9', dependsOnId: t1.id };
+    const t3 = { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea', dependsOnId: t2.id };
+    const t4 = { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981', dependsOnId: t3.id };
+    return [t1, t2, t3, t4];
   }
 
   function clearShareHash() {
@@ -439,6 +526,7 @@
         if (!Array.isArray(data)) throw new Error('Invalid shared payload');
         tasks = data;
         normalizeTasks();
+        applyDependencies();
         save();
         return;
       } catch (e) {
@@ -452,6 +540,7 @@
       try {
         tasks = JSON.parse(raw);
         normalizeTasks();
+        applyDependencies();
         save();
         return;
       } catch (e) {
@@ -461,6 +550,7 @@
 
     // Defaults
     tasks = sampleTasks();
+    applyDependencies();
     save();
   }
 
@@ -529,14 +619,96 @@
     return h > 0 ? h : SCALE_H;
   }
 
+  function renderDependencies(minD, totalH, gridWidth, rowIndexById, visibleIds) {
+    const depTasks = tasks.filter(t => t.dependsOnId && visibleIds.has(t.id));
+    if (depTasks.length === 0) return null;
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', gridWidth);
+    svg.setAttribute('height', totalH);
+    svg.classList.add('absolute');
+    svg.style.left = '0px';
+    svg.style.top = '0px';
+    svg.style.pointerEvents = 'none';
+    svg.setAttribute('aria-hidden', 'true');
+
+    const defs = document.createElementNS(ns, 'defs');
+    const marker = document.createElementNS(ns, 'marker');
+    marker.setAttribute('id', 'dep-arrow');
+    marker.setAttribute('viewBox', '0 0 6 6');
+    marker.setAttribute('refX', '6');
+    marker.setAttribute('refY', '3');
+    marker.setAttribute('markerWidth', '6');
+    marker.setAttribute('markerHeight', '6');
+    marker.setAttribute('orient', 'auto');
+    const arrowPath = document.createElementNS(ns, 'path');
+    arrowPath.setAttribute('d', 'M0,0 L6,3 L0,6 Z');
+    arrowPath.setAttribute('fill', DEP_LINE_COLOR);
+    marker.appendChild(arrowPath);
+    defs.appendChild(marker);
+    svg.appendChild(defs);
+
+    let hasLines = false;
+    depTasks.forEach(t => {
+      const pred = getTaskById(t.dependsOnId);
+      if (!pred || !visibleIds.has(pred.id)) return;
+      const predIdx = rowIndexById.get(pred.id);
+      const depIdx = rowIndexById.get(t.id);
+      if (predIdx === undefined || depIdx === undefined) return;
+
+      const predEnd = getTaskEndDate(pred);
+      let predX = daysBetween(minD, predEnd) * DAY_W;
+      if (!pred.milestone) predX += DAY_W;
+
+      const depStart = toDate(t.start);
+      const depX = daysBetween(minD, depStart) * DAY_W;
+
+      const startX = predX + (pred.milestone ? 8 : 2);
+      let endX = depX - 6;
+
+      const predY = predIdx * ROW_H + (ROW_H / 2);
+      const depY = depIdx * ROW_H + (ROW_H / 2);
+      let elbowX;
+      if (endX <= startX + 4) {
+        elbowX = startX + 12;
+        endX = depX + 6;
+      } else {
+        elbowX = Math.max(startX + 8, Math.min(startX + 24, endX - 8));
+      }
+
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', `M ${startX} ${predY} L ${elbowX} ${predY} L ${elbowX} ${depY} L ${endX} ${depY}`);
+      path.setAttribute('stroke', DEP_LINE_COLOR);
+      path.setAttribute('stroke-width', '1.5');
+      path.setAttribute('fill', 'none');
+      path.setAttribute('marker-end', 'url(#dep-arrow)');
+      svg.appendChild(path);
+
+      const dot = document.createElementNS(ns, 'circle');
+      dot.setAttribute('cx', String(startX));
+      dot.setAttribute('cy', String(predY));
+      dot.setAttribute('r', '2');
+      dot.setAttribute('fill', DEP_LINE_COLOR);
+      svg.appendChild(dot);
+
+      hasLines = true;
+    });
+
+    return hasLines ? svg : null;
+  }
+
   function render() {
     const q = els.search.value.trim().toLowerCase();
-    filteredIds = new Set(tasks.filter(t => t.name.toLowerCase().includes(q)).map(t => t.id));
+    const visibleTasks = tasks.filter(t => t.name.toLowerCase().includes(q));
+    const visibleIds = new Set(visibleTasks.map(t => t.id));
+    filteredIds = visibleIds;
 
     const {minD, maxD} = bounds();
     const dayCount = daysBetween(minD, addDays(maxD, 1));
     const gridWidth = Math.max(800, dayCount * DAY_W);
-    const totalH = tasks.length * ROW_H;
+    const totalH = visibleTasks.length * ROW_H;
+    const rowIndexById = new Map(visibleTasks.map((t, i) => [t.id, i]));
 
     els.grid.style.setProperty('--row-h', ROW_H + 'px');
     els.grid.style.setProperty('--day-w', DAY_W + 'px');
@@ -560,8 +732,8 @@
     // Left list
     els.left.innerHTML = '';
     const paletteDotsHTML = PALETTE.map(c => `<div class="palette-dot" data-color="${escapeHtml(c)}" style="background:${escapeHtml(c)}" title="${escapeHtml(c)}"></div>`).join('');
-    tasks.forEach((t) => {
-      const visible = filteredIds.has(t.id);
+    visibleTasks.forEach((t, idx) => {
+      const visible = true;
       const li = document.createElement('li');
       li.className = `group ${visible ? '' : 'hidden'}`;
       li.draggable = true;
@@ -575,6 +747,17 @@
       const durTxt = t.milestone ? '—' : `${durBiz}d`;
 
       const curColor = t.color || (t.milestone ? DEFAULT_MILESTONE_COLOR : DEFAULT_TASK_COLOR);
+      const depOptions = ['<option value="">None</option>'];
+      let hasCurrent = false;
+      tasks.forEach(other => {
+        if (other.id === t.id) return;
+        const rawLabel = (other.name || '').trim();
+        const label = rawLabel ? rawLabel : 'Untitled task';
+        const selected = other.id === t.dependsOnId ? ' selected' : '';
+        if (selected) hasCurrent = true;
+        depOptions.push(`<option value="${escapeHtml(other.id)}"${selected}>${escapeHtml(label)}</option>`);
+      });
+      const depOptionsHTML = depOptions.join('');
 
       li.innerHTML = `
         <div class="relative">
@@ -584,6 +767,7 @@
               <span class="swatch" style="background:${curColor}"></span>
             </button>
             <input class="min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
+            <select class="col-dep w-full text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-deps="true" aria-label="Depends on">${depOptionsHTML}</select>
             <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-start">${startTxt}</div>
             <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-end">${endTxt}</div>
             <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-dur">${durTxt}</div>
@@ -601,8 +785,31 @@
         t.name = e.target.value;
         save();
         updateTaskNameInGantt(t);
+        updateDependencyLabels(t);
       });
-      li.querySelector('button[aria-label="Delete"]').addEventListener('click', ()=>{ tasks = tasks.filter(x=>x.id!==t.id); save(); render(); });
+      nameInput.addEventListener('blur', ()=> {
+        if (els.search.value.trim()) render();
+      });
+      nameInput.addEventListener('keydown', (e)=>{
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (els.search.value.trim()) render();
+          nameInput.blur();
+        }
+      });
+      li.querySelector('button[aria-label="Delete"]').addEventListener('click', ()=>{
+        tasks = tasks.filter(x=>x.id!==t.id);
+        applyDependencies();
+        save();
+        render();
+      });
+      const depSelect = li.querySelector('select[data-deps]');
+      depSelect.addEventListener('change', (e)=>{
+        t.dependsOnId = e.target.value || undefined;
+        applyDependencies();
+        save();
+        render();
+      });
 
       // Color picker
       const swatchBtn = li.querySelector('.swatch-btn');
@@ -634,6 +841,7 @@
         const to = tasks.findIndex(x=>x.id===t.id);
         const [moved] = tasks.splice(from,1);
         tasks.splice(to,0,moved);
+        applyDependencies();
         save(); render();
       });
 
@@ -699,8 +907,7 @@
     els.grid.appendChild(gridBg);
 
     // Bars + milestones
-    tasks.forEach((t, idx) => {
-      if (!filteredIds.has(t.id)) return;
+    visibleTasks.forEach((t, idx) => {
       const yBase = idx * ROW_H;
       const s = toDate(t.start);
       const e = t.milestone ? s : toDate(t.end || t.start);
@@ -753,6 +960,9 @@
         els.grid.appendChild(bar);
       }
     });
+
+    const depsLayer = renderDependencies(minD, totalH, gridWidth, rowIndexById, visibleIds);
+    if (depsLayer) els.grid.appendChild(depsLayer);
   }
 
   function renderScale(minD, dayCount, gridWidth) {
@@ -944,6 +1154,7 @@
     dragCtx.el?.classList.remove('dragging');
     dragCtx = null;
 
+    applyDependencies();
     save();
     render();
   }
@@ -1079,6 +1290,7 @@
     clearShareHash();
     resetSearch();
     tasks = sampleTasks();
+    applyDependencies();
     save();
     render();
   });
