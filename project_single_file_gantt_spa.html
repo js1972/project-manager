@@ -8,7 +8,16 @@
   <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
   <style>
     html, body { height: 100%; }
-    :root { --row-h: 38px; --day-w: 24px; --scale-h: 44px; --left-w: 560px; }
+    :root {
+      --row-h: 38px;
+      --day-w: 24px;
+      --scale-h: 44px;
+      --left-w: 560px;
+      --col-dep: 150px;
+      --col-start: 110px;
+      --col-end: 110px;
+      --col-dur: 72px;
+    }
     .gantt-grid-bg {
       background-image: linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px);
       background-size: var(--day-w) 100%;
@@ -59,19 +68,21 @@
     .palette-label { font-size: 11px; color: rgba(0,0,0,0.55); margin-bottom: 6px; user-select:none; }
 
     /* Left pane: keep Task name visible when narrowing */
-    .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 104px 104px 72px 28px; }
-    body.left-hide-dur .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 104px 104px 28px; }
-    body.left-hide-enddur .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 104px 28px; }
-    body.left-hide-dates .task-row-grid { grid-template-columns: 20px 26px 1fr 120px 28px; }
+    .task-row-grid { grid-template-columns: 20px 26px minmax(140px, 1fr) var(--col-dep) var(--col-start) var(--col-end) var(--col-dur) 28px; }
+
+    body.left-hide-dur { --col-dur: 0px; }
+    body.left-hide-end { --col-end: 0px; }
+    body.left-hide-start { --col-start: 0px; }
+    body.left-hide-dep { --col-dep: 0px; }
 
     body.left-hide-dur .col-dur,
-    body.left-hide-enddur .col-end,
-    body.left-hide-enddur .col-dur,
-    body.left-hide-dates .col-start,
-    body.left-hide-dates .col-end,
-    body.left-hide-dates .col-dur { display:none; }
+    body.left-hide-end .col-end,
+    body.left-hide-start .col-start,
+    body.left-hide-dep .col-dep { display:none; }
 
-    .task-name { min-width: 160px; }
+    .task-name { min-width: 0; }
+    .col-dep { min-width: 0; }
+    .col-dep select { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -86,13 +97,21 @@
           <input id="search" type="search" placeholder="Filter…" class="h-10 px-3 rounded-xl border border-gray-300 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <button id="addTask" class="h-10 px-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow">+ Task</button>
           <button id="addMilestone" class="h-10 px-3 rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow">+ Milestone</button>
+          <button id="undoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow">Undo</button>
+          <button id="redoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow">Redo</button>
           <button id="share" class="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow">Share</button>
+          <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 shadow">
+            <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="day">Day</button>
+            <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="week">Week</button>
+            <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="month">Month</button>
+          </div>
           <button id="today" class="h-10 px-3 rounded-xl bg-rose-600 text-white hover:bg-rose-700 shadow">Today</button>
           <button id="centerToday" class="h-10 px-3 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 shadow">Center Today</button>
           <div class="relative">
             <button id="menuBtn" class="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-200 hover:bg-gray-300 shadow" aria-label="Menu">⋮</button>
             <div id="menu" class="hidden absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg ring-1 ring-black/5 z-50">
               <button id="loadSample" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Load sample project</button>
+              <button id="exportCsv" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Export CSV</button>
               <button id="clearData" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Clear all data…</button>
             </div>
           </div>
@@ -151,7 +170,14 @@
 (() => {
   const DAY_MS = 24*60*60*1000;
   const ROW_H = 38;
-  const DAY_W = 24;
+  const DEFAULT_DAY_W = 24;
+  let dayW = DEFAULT_DAY_W;
+  const ZOOM_LEVELS = {
+    day: { label: 'Day', dayW: 24 },
+    week: { label: 'Week', dayW: 14 },
+    month: { label: 'Month', dayW: 8 },
+  };
+  let zoomKey = 'day';
   const SCALE_H = 44; // fallback; actual scale height is measured from DOM for perfect alignment
   const STORAGE_KEY = 'bdc-fre-gantt-v1';
   const META_KEY = 'bdc-fre-gantt-meta-v1';
@@ -170,6 +196,8 @@
     search: document.getElementById('search'),
     addTask: document.getElementById('addTask'),
     addMilestone: document.getElementById('addMilestone'),
+    undoBtn: document.getElementById('undoBtn'),
+    redoBtn: document.getElementById('redoBtn'),
     share: document.getElementById('share'),
     scale: document.getElementById('scale'),
     left: document.getElementById('taskList'),
@@ -181,8 +209,10 @@
     menu: document.getElementById('menu'),
     clearData: document.getElementById('clearData'),
     loadSample: document.getElementById('loadSample'),
+    exportCsv: document.getElementById('exportCsv'),
     splitter: document.getElementById('splitter'),
   };
+  const zoomButtons = Array.from(document.querySelectorAll('.zoom-btn'));
 
   const uid = () => Math.random().toString(36).slice(2, 10);
   const toDate = (iso) => new Date(iso + 'T00:00:00Z');
@@ -309,11 +339,83 @@
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
   }
-  function saveUI(ui) { localStorage.setItem(UI_KEY, JSON.stringify(ui)); }
+  function saveUI(ui) {
+    const prev = loadUI() || {};
+    localStorage.setItem(UI_KEY, JSON.stringify({ ...prev, ...ui }));
+  }
   function loadUI() {
     const raw = localStorage.getItem(UI_KEY);
     if (!raw) return null;
     try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  const historyState = { stack: [], index: -1 };
+  const HISTORY_LIMIT = 80;
+  let historyLocked = false;
+
+  function cloneTasksSnapshot() {
+    if (typeof structuredClone === 'function') return structuredClone(tasks);
+    return JSON.parse(JSON.stringify(tasks));
+  }
+
+  function snapshotState() {
+    const title = els.projectTitle ? els.projectTitle.value.trim() || 'Project name' : 'Project name';
+    return { tasks: cloneTasksSnapshot(), title };
+  }
+
+  function applySnapshot(snapshot) {
+    tasks = snapshot.tasks || [];
+    if (els.projectTitle) {
+      els.projectTitle.value = snapshot.title || 'Project name';
+      document.title = (snapshot.title || 'Project name') + ' — Gantt';
+      saveMeta({ title: snapshot.title || 'Project name' });
+    }
+    save();
+    render();
+  }
+
+  function updateHistoryButtons() {
+    if (!els.undoBtn || !els.redoBtn) return;
+    const canUndo = historyState.index > 0;
+    const canRedo = historyState.index < historyState.stack.length - 1;
+    els.undoBtn.disabled = !canUndo;
+    els.redoBtn.disabled = !canRedo;
+    els.undoBtn.classList.toggle('opacity-50', !canUndo);
+    els.undoBtn.classList.toggle('cursor-not-allowed', !canUndo);
+    els.redoBtn.classList.toggle('opacity-50', !canRedo);
+    els.redoBtn.classList.toggle('cursor-not-allowed', !canRedo);
+  }
+
+  function commitHistory() {
+    if (historyLocked) return;
+    const snap = snapshotState();
+    if (historyState.index < historyState.stack.length - 1) {
+      historyState.stack = historyState.stack.slice(0, historyState.index + 1);
+    }
+    historyState.stack.push(snap);
+    if (historyState.stack.length > HISTORY_LIMIT) {
+      historyState.stack.shift();
+    }
+    historyState.index = historyState.stack.length - 1;
+    updateHistoryButtons();
+  }
+
+  function undo() {
+    if (historyState.index <= 0) return;
+    historyLocked = true;
+    historyState.index--;
+    applySnapshot(historyState.stack[historyState.index]);
+    historyLocked = false;
+    updateHistoryButtons();
+  }
+
+  function redo() {
+    if (historyState.index >= historyState.stack.length - 1) return;
+    historyLocked = true;
+    historyState.index++;
+    applySnapshot(historyState.stack[historyState.index]);
+    historyLocked = false;
+    updateHistoryButtons();
   }
 
   function clampLeftWidth(px) {
@@ -323,10 +425,35 @@
   }
 
   function applyLeftLayout(w) {
-    document.body.classList.remove('left-hide-dur','left-hide-enddur','left-hide-dates');
-    if (w < 440) document.body.classList.add('left-hide-dates');
-    else if (w < 480) document.body.classList.add('left-hide-enddur');
-    else if (w < 520) document.body.classList.add('left-hide-dur');
+    document.body.classList.remove('left-hide-dur','left-hide-end','left-hide-start','left-hide-dep');
+    if (w < 520) {
+      document.body.classList.add('left-hide-start','left-hide-end','left-hide-dur','left-hide-dep');
+    } else if (w < 600) {
+      document.body.classList.add('left-hide-start','left-hide-end','left-hide-dur');
+    } else if (w < 680) {
+      document.body.classList.add('left-hide-end','left-hide-dur');
+    } else if (w < 760) {
+      document.body.classList.add('left-hide-dur');
+    }
+  }
+
+  function updateZoomButtons() {
+    zoomButtons.forEach(btn => {
+      const active = btn.dataset.zoom === zoomKey;
+      btn.classList.toggle('bg-white', active);
+      btn.classList.toggle('text-gray-900', active);
+      btn.classList.toggle('shadow', active);
+      btn.classList.toggle('text-gray-600', !active);
+    });
+  }
+
+  function setZoom(key, persist=false) {
+    if (!ZOOM_LEVELS[key]) return;
+    zoomKey = key;
+    dayW = ZOOM_LEVELS[key].dayW;
+    updateZoomButtons();
+    if (persist) saveUI({ zoom: zoomKey });
+    render();
   }
 
   function setLeftWidth(px, persist=false) {
@@ -427,6 +554,51 @@
     tasks.forEach(enforce);
   }
 
+  function computeDependencyWarnings(taskIndexById) {
+    const warnings = new Map();
+    const byId = new Map(tasks.map(t => [t.id, t]));
+    const state = new Map();
+
+    function markCycle(stack, startId) {
+      const startIdx = stack.indexOf(startId);
+      if (startIdx === -1) return;
+      stack.slice(startIdx).forEach(id => {
+        warnings.set(id, 'Dependency cycle');
+      });
+    }
+
+    function dfs(t, stack) {
+      const st = state.get(t.id);
+      if (st === 'visiting') {
+        markCycle(stack, t.id);
+        return;
+      }
+      if (st === 'done') return;
+      state.set(t.id, 'visiting');
+      stack.push(t.id);
+      if (t.dependsOnId) {
+        const pred = byId.get(t.dependsOnId);
+        if (pred) dfs(pred, stack);
+      }
+      stack.pop();
+      state.set(t.id, 'done');
+    }
+
+    tasks.forEach(t => dfs(t, []));
+    tasks.forEach(t => {
+      if (!t.dependsOnId) return;
+      const pred = byId.get(t.dependsOnId);
+      if (!pred) warnings.set(t.id, 'Missing dependency');
+      const predIdx = taskIndexById.get(t.dependsOnId);
+      const curIdx = taskIndexById.get(t.id);
+      if (predIdx !== undefined && curIdx !== undefined && predIdx > curIdx) {
+        warnings.set(t.id, 'Dependency is after this task');
+      }
+    });
+
+    return warnings;
+  }
+
   function loadEmbeddedPayload() {
     const el = document.getElementById(EMBEDDED_DATA_ID);
     if (!el) return null;
@@ -488,6 +660,39 @@
     el.title = `${t.name} — ${t.start} → ${end}`;
     const label = el.querySelector('.bar-label');
     if (label) label.textContent = t.name;
+  }
+
+  function applyStartInput(t, value) {
+    const d = toDateSafe(value);
+    if (!d) return false;
+    const s = clampStartToLimit(d);
+    const newStartISO = toISO(s);
+    if (t.milestone) {
+      if (t.start === newStartISO) return false;
+      t.start = newStartISO;
+      return true;
+    }
+    const curStart = toDateSafe(t.start) || s;
+    const curEnd = toDateSafe(t.end) || curStart;
+    const durBiz = Math.max(1, businessDaysInclusive(curStart, curEnd));
+    const newEndISO = toISO(addBusinessDays(s, durBiz - 1));
+    if (t.start === newStartISO && t.end === newEndISO) return false;
+    t.start = newStartISO;
+    t.end = newEndISO;
+    return true;
+  }
+
+  function applyEndInput(t, value) {
+    if (t.milestone) return false;
+    const d = toDateSafe(value);
+    if (!d) return false;
+    let e = snapEndToBusinessDay(d);
+    const s = toDateSafe(t.start) || e;
+    if (e < s) e = s;
+    const newEndISO = toISO(e);
+    if (t.end === newEndISO) return false;
+    t.end = newEndISO;
+    return true;
   }
 
   function sampleTasks() {
@@ -578,6 +783,41 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function csvEscape(value) {
+    const s = String(value ?? '');
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  }
+
+  function exportCsv() {
+    const header = ['id','name','start','end','milestone','dependsOnId','color'];
+    const rows = [header];
+    tasks.forEach(t => {
+      rows.push([
+        t.id,
+        t.name,
+        t.start,
+        t.milestone ? '' : (t.end || t.start),
+        t.milestone ? 'true' : 'false',
+        t.dependsOnId || '',
+        t.color || '',
+      ]);
+    });
+    const csv = rows.map(row => row.map(csvEscape).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const title = els.projectTitle ? els.projectTitle.value.trim() : '';
+    const stamp = toISO(todayUTC());
+    const base = slugifyFileName(title || 'gantt-project');
+    a.href = url;
+    a.download = `${base}-${stamp}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   function bounds() {
     let minD = new Date('2999-01-01T00:00:00Z');
     let maxD = new Date('1970-01-01T00:00:00Z');
@@ -602,7 +842,7 @@
 
   function scrollToDate(date, align='left') {
     const {minD} = bounds();
-    const x = daysBetween(minD, date) * DAY_W;
+    const x = daysBetween(minD, date) * dayW;
     const pane = els.rightPane;
     pane.scrollLeft = Math.max(0, align === 'center' ? x - pane.clientWidth/2 : x);
   }
@@ -658,11 +898,11 @@
       if (predIdx === undefined || depIdx === undefined) return;
 
       const predEnd = getTaskEndDate(pred);
-      let predX = daysBetween(minD, predEnd) * DAY_W;
-      if (!pred.milestone) predX += DAY_W;
+      let predX = daysBetween(minD, predEnd) * dayW;
+      if (!pred.milestone) predX += dayW;
 
       const depStart = toDate(t.start);
-      const depX = daysBetween(minD, depStart) * DAY_W;
+      const depX = daysBetween(minD, depStart) * dayW;
 
       const startX = predX + (pred.milestone ? 8 : 2);
       let endX = depX - 6;
@@ -702,16 +942,18 @@
     const q = els.search.value.trim().toLowerCase();
     const visibleTasks = tasks.filter(t => t.name.toLowerCase().includes(q));
     const visibleIds = new Set(visibleTasks.map(t => t.id));
+    const taskIndexById = new Map(tasks.map((t, i) => [t.id, i]));
+    const depWarnings = computeDependencyWarnings(taskIndexById);
     filteredIds = visibleIds;
 
     const {minD, maxD} = bounds();
     const dayCount = daysBetween(minD, addDays(maxD, 1));
-    const gridWidth = Math.max(800, dayCount * DAY_W);
+    const gridWidth = Math.max(800, dayCount * dayW);
     const totalH = visibleTasks.length * ROW_H;
     const rowIndexById = new Map(visibleTasks.map((t, i) => [t.id, i]));
 
     els.grid.style.setProperty('--row-h', ROW_H + 'px');
-    els.grid.style.setProperty('--day-w', DAY_W + 'px');
+    els.grid.style.setProperty('--day-w', dayW + 'px');
 
     renderScale(minD, dayCount, gridWidth);
 
@@ -741,23 +983,39 @@
 
       const s = toDate(t.start);
       const e = t.milestone ? s : toDate(t.end || t.start);
-      const startTxt = t.start;
-      const endTxt = t.milestone ? '—' : (t.end || t.start);
+      const startVal = t.start;
+      const endVal = t.milestone ? '' : (t.end || t.start);
       const durBiz = t.milestone ? null : businessDaysInclusive(s, e);
       const durTxt = t.milestone ? '—' : `${durBiz}d`;
 
       const curColor = t.color || (t.milestone ? DEFAULT_MILESTONE_COLOR : DEFAULT_TASK_COLOR);
       const depOptions = ['<option value="">None</option>'];
       let hasCurrent = false;
+      const tIndex = taskIndexById.get(t.id);
       tasks.forEach(other => {
         if (other.id === t.id) return;
+        const otherIndex = taskIndexById.get(other.id);
+        if (tIndex !== undefined && otherIndex !== undefined && otherIndex >= tIndex) return;
         const rawLabel = (other.name || '').trim();
         const label = rawLabel ? rawLabel : 'Untitled task';
         const selected = other.id === t.dependsOnId ? ' selected' : '';
         if (selected) hasCurrent = true;
         depOptions.push(`<option value="${escapeHtml(other.id)}"${selected}>${escapeHtml(label)}</option>`);
       });
+      if (t.dependsOnId && !hasCurrent) {
+        const current = getTaskById(t.dependsOnId);
+        if (current) {
+          const rawLabel = (current.name || '').trim();
+          const label = rawLabel ? rawLabel : 'Untitled task';
+          depOptions.push(`<option value="${escapeHtml(current.id)}" selected>${escapeHtml(label)}</option>`);
+        }
+      }
       const depOptionsHTML = depOptions.join('');
+      const depWarning = depWarnings.get(t.id);
+      const depWarnHTML = depWarning ? `<span class="text-amber-500 text-xs font-semibold" title="${escapeHtml(depWarning)}">!</span>` : '';
+      const endCellHTML = t.milestone
+        ? '<div class="text-right text-xs md:text-sm font-mono text-gray-600 col-end">—</div>'
+        : `<input type="date" class="col-end w-full text-right text-xs md:text-sm font-mono text-gray-600 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-end="true" value="${escapeHtml(endVal)}" />`;
 
       li.innerHTML = `
         <div class="relative">
@@ -767,9 +1025,12 @@
               <span class="swatch" style="background:${curColor}"></span>
             </button>
             <input class="min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
-            <select class="col-dep w-full text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-deps="true" aria-label="Depends on">${depOptionsHTML}</select>
-            <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-start">${startTxt}</div>
-            <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-end">${endTxt}</div>
+            <div class="col-dep flex items-center gap-1">
+              <select class="flex-1 text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-deps="true" aria-label="Depends on">${depOptionsHTML}</select>
+              ${depWarnHTML}
+            </div>
+            <input type="date" class="col-start w-full text-right text-xs md:text-sm font-mono text-gray-600 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-start="true" value="${escapeHtml(startVal)}" />
+            ${endCellHTML}
             <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-dur">${durTxt}</div>
             <button type="button" class="text-gray-400 hover:text-red-600" title="Delete" aria-label="Delete">✕</button>
           </div>
@@ -789,19 +1050,64 @@
       });
       nameInput.addEventListener('blur', ()=> {
         if (els.search.value.trim()) render();
+        commitHistory();
       });
       nameInput.addEventListener('keydown', (e)=>{
         if (e.key === 'Enter') {
           e.preventDefault();
-          if (els.search.value.trim()) render();
           nameInput.blur();
         }
       });
+      const startInput = li.querySelector('input[data-start]');
+      startInput.addEventListener('change', ()=>{
+        if (!applyStartInput(t, startInput.value)) return;
+        applyDependencies();
+        save();
+        render();
+        commitHistory();
+      });
+      startInput.addEventListener('blur', ()=>{
+        if (!applyStartInput(t, startInput.value)) return;
+        applyDependencies();
+        save();
+        render();
+        commitHistory();
+      });
+      startInput.addEventListener('keydown', (e)=>{
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          startInput.blur();
+        }
+      });
+      const endInput = li.querySelector('input[data-end]');
+      if (endInput) {
+        endInput.addEventListener('change', ()=>{
+          if (!applyEndInput(t, endInput.value)) return;
+          applyDependencies();
+          save();
+          render();
+          commitHistory();
+        });
+        endInput.addEventListener('blur', ()=>{
+          if (!applyEndInput(t, endInput.value)) return;
+          applyDependencies();
+          save();
+          render();
+          commitHistory();
+        });
+        endInput.addEventListener('keydown', (e)=>{
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            endInput.blur();
+          }
+        });
+      }
       li.querySelector('button[aria-label="Delete"]').addEventListener('click', ()=>{
         tasks = tasks.filter(x=>x.id!==t.id);
         applyDependencies();
         save();
         render();
+        commitHistory();
       });
       const depSelect = li.querySelector('select[data-deps]');
       depSelect.addEventListener('change', (e)=>{
@@ -809,6 +1115,7 @@
         applyDependencies();
         save();
         render();
+        commitHistory();
       });
 
       // Color picker
@@ -826,6 +1133,7 @@
         t.color = dot.dataset.color;
         save();
         render();
+        commitHistory();
       });
 
       // Reorder via HTML DnD
@@ -843,6 +1151,7 @@
         tasks.splice(to,0,moved);
         applyDependencies();
         save(); render();
+        commitHistory();
       });
 
       els.left.appendChild(li);
@@ -860,15 +1169,15 @@
       const shade = document.createElement('div');
       shade.className = 'today-col absolute';
       shade.style.top = '0px';
-      shade.style.left = (dayOffsetToday * DAY_W) + 'px';
-      shade.style.width = DAY_W + 'px';
+      shade.style.left = (dayOffsetToday * dayW) + 'px';
+      shade.style.width = dayW + 'px';
       shade.style.height = totalH + 'px';
       els.grid.appendChild(shade);
 
       const line = document.createElement('div');
       line.className = 'today-line absolute';
       line.style.top = '0px';
-      line.style.left = (dayOffsetToday * DAY_W) + 'px';
+      line.style.left = (dayOffsetToday * dayW) + 'px';
       line.style.height = totalH + 'px';
       els.grid.appendChild(line);
     }
@@ -881,7 +1190,7 @@
       limitShade.className = 'limit-col absolute';
       limitShade.style.top = '0px';
       limitShade.style.left = '0px';
-      limitShade.style.width = (limitOffset * DAY_W) + 'px';
+      limitShade.style.width = (limitOffset * dayW) + 'px';
       limitShade.style.height = totalH + 'px';
       els.grid.appendChild(limitShade);
     }
@@ -898,8 +1207,8 @@
       if (isWeekend(d)) {
         const w = document.createElement('div');
         w.className = 'weekend-shade absolute top-0';
-        w.style.left = (i*DAY_W) + 'px';
-        w.style.width = DAY_W + 'px';
+        w.style.left = (i*dayW) + 'px';
+        w.style.width = dayW + 'px';
         w.style.height = '100%';
         gridBg.appendChild(w);
       }
@@ -911,8 +1220,8 @@
       const yBase = idx * ROW_H;
       const s = toDate(t.start);
       const e = t.milestone ? s : toDate(t.end || t.start);
-      const x = daysBetween(minD, s) * DAY_W;
-      const w = t.milestone ? 0 : Math.max(DAY_W, (daysBetween(s, addDays(e,1)) * DAY_W));
+      const x = daysBetween(minD, s) * dayW;
+      const w = t.milestone ? 0 : Math.max(dayW, (daysBetween(s, addDays(e,1)) * dayW));
 
       if (t.milestone) {
         const ms = document.createElement('div');
@@ -987,7 +1296,7 @@
     months.forEach(m => {
       const cell = document.createElement('div');
       cell.className = 'px-2 py-1 text-[11px] text-gray-700';
-      cell.style.width = (m.span * DAY_W) + 'px';
+      cell.style.width = (m.span * dayW) + 'px';
       cell.textContent = m.label;
       monthRow.appendChild(cell);
     });
@@ -998,7 +1307,7 @@
       const d = addDays(minD, i);
       const cell = document.createElement('div');
       cell.className = 'text-[10px] text-gray-500 text-center';
-      cell.style.width = DAY_W + 'px';
+      cell.style.width = dayW + 'px';
       cell.textContent = fmtDay(d);
       daysRow.appendChild(cell);
     }
@@ -1081,7 +1390,7 @@
 
     if (dragCtx.type === 'move' || dragCtx.type === 'ms-move') {
       const desiredStartLeftPx = x - dragCtx.anchorPx;
-      const desiredStartDay = desiredStartLeftPx / DAY_W;
+      const desiredStartDay = desiredStartLeftPx / dayW;
       const startDay0 = daysBetween(minD, start0);
       const snappedStartDay = startDay0 + snapDays(desiredStartDay - startDay0, ev);
 
@@ -1090,20 +1399,20 @@
 
       if (t.milestone || dragCtx.type === 'ms-move') {
         dragCtx.pendingStartISO = toISO(newStart);
-        dragCtx.el.style.left = ((daysBetween(minD, newStart) * DAY_W) - 7) + 'px';
+        dragCtx.el.style.left = ((daysBetween(minD, newStart) * dayW) - 7) + 'px';
       } else {
         const bizLen = Math.max(1, durBiz);
         const newEnd = addBusinessDays(newStart, bizLen - 1);
         dragCtx.pendingStartISO = toISO(newStart);
         dragCtx.pendingEndISO = toISO(newEnd);
-        dragCtx.el.style.left = (daysBetween(minD, newStart) * DAY_W) + 'px';
+        dragCtx.el.style.left = (daysBetween(minD, newStart) * dayW) + 'px';
       }
       return;
     }
 
     if (dragCtx.type === 'resize-l') {
       const desiredLeftPx = x - dragCtx.anchorPx;
-      const desiredDay = desiredLeftPx / DAY_W;
+      const desiredDay = desiredLeftPx / dayW;
       const startDay0 = daysBetween(minD, start0);
       const snappedDay = startDay0 + snapDays(desiredDay - startDay0, ev);
 
@@ -1113,16 +1422,16 @@
 
       dragCtx.pendingStartISO = toISO(newStart);
 
-      const newLeftPx = daysBetween(minD, newStart) * DAY_W;
-      const endRightPx = daysBetween(minD, end0) * DAY_W + DAY_W;
+      const newLeftPx = daysBetween(minD, newStart) * dayW;
+      const endRightPx = daysBetween(minD, end0) * dayW + dayW;
       dragCtx.el.style.left = newLeftPx + 'px';
-      dragCtx.el.style.width = Math.max(DAY_W, endRightPx - newLeftPx) + 'px';
+      dragCtx.el.style.width = Math.max(dayW, endRightPx - newLeftPx) + 'px';
       return;
     }
 
     if (dragCtx.type === 'resize-r') {
       const desiredRightPx = x - dragCtx.anchorPx;
-      const desiredDay = desiredRightPx / DAY_W;
+      const desiredDay = desiredRightPx / dayW;
       const endDay0 = daysBetween(minD, end0);
       const snappedDay = endDay0 + snapDays(desiredDay - endDay0, ev);
 
@@ -1132,9 +1441,9 @@
 
       dragCtx.pendingEndISO = toISO(newEnd);
 
-      const leftPx = daysBetween(minD, start0) * DAY_W;
-      const rightPx = daysBetween(minD, newEnd) * DAY_W + DAY_W;
-      dragCtx.el.style.width = Math.max(DAY_W, rightPx - leftPx) + 'px';
+      const leftPx = daysBetween(minD, start0) * dayW;
+      const rightPx = daysBetween(minD, newEnd) * dayW + dayW;
+      dragCtx.el.style.width = Math.max(dayW, rightPx - leftPx) + 'px';
       return;
     }
   }
@@ -1157,6 +1466,7 @@
     applyDependencies();
     save();
     render();
+    commitHistory();
   }
 
   function addTask(defaultMilestone=false) {
@@ -1183,6 +1493,7 @@
     }
     save();
     render();
+    commitHistory();
     requestAnimationFrame(()=>{
       const li = document.querySelector('#taskList li:last-child input');
       if (li) { li.focus(); li.select(); }
@@ -1236,6 +1547,18 @@
     });
   })();
 
+  (function initZoom(){
+    const ui = loadUI();
+    if (ui && ui.zoom && ZOOM_LEVELS[ui.zoom]) {
+      zoomKey = ui.zoom;
+      dayW = ZOOM_LEVELS[zoomKey].dayW;
+    }
+    updateZoomButtons();
+    zoomButtons.forEach(btn => {
+      btn.addEventListener('click', ()=> setZoom(btn.dataset.zoom, true));
+    });
+  })();
+
   // ===== Events =====
   els.search.addEventListener('input', render);
 
@@ -1245,11 +1568,22 @@
       document.title = title + ' — Gantt';
       saveMeta({ title });
     });
+    els.projectTitle.addEventListener('blur', ()=> {
+      commitHistory();
+    });
+    els.projectTitle.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        els.projectTitle.blur();
+      }
+    });
   }
 
   els.addTask.addEventListener('click', ()=> addTask(false));
   els.addMilestone.addEventListener('click', ()=> addTask(true));
   els.share.addEventListener('click', sharePortable);
+  els.undoBtn.addEventListener('click', undo);
+  els.redoBtn.addEventListener('click', redo);
 
   // Kebab menu
   els.menuBtn.addEventListener('click', (e)=>{
@@ -1279,6 +1613,7 @@
       document.title = 'Project name — Gantt';
     }
     render();
+    commitHistory();
   });
 
   els.loadSample.addEventListener('click', (e)=>{
@@ -1293,13 +1628,33 @@
     applyDependencies();
     save();
     render();
+    commitHistory();
+  });
+  els.exportCsv.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    els.menu.classList.add('hidden');
+    exportCsv();
   });
 
   els.todayBtn.addEventListener('click', ()=> scrollToDate(todayUTC(), 'left'));
   els.centerTodayBtn.addEventListener('click', ()=> scrollToDate(todayUTC(), 'center'));
 
   document.addEventListener('keydown', (e)=>{
-    if ((e.key === 't' || e.key === 'T') && !e.target.closest('input, textarea')) {
+    const inField = e.target.closest('input, textarea, select');
+    const isMod = e.ctrlKey || e.metaKey;
+    if (!inField && isMod && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+      return;
+    }
+    if (!inField && isMod && (e.key === 'y' || e.key === 'Y')) {
+      e.preventDefault();
+      redo();
+      return;
+    }
+    if (!inField && (e.key === 't' || e.key === 'T')) {
       e.preventDefault();
       scrollToDate(todayUTC(), 'center');
     }
@@ -1314,6 +1669,7 @@
   load();
   render();
   scrollToDate(todayUTC(), 'center');
+  commitHistory();
 
 })();
 </script>
