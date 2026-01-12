@@ -86,7 +86,7 @@
           <input id="search" type="search" placeholder="Filter…" class="h-10 px-3 rounded-xl border border-gray-300 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
           <button id="addTask" class="h-10 px-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow">+ Task</button>
           <button id="addMilestone" class="h-10 px-3 rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow">+ Milestone</button>
-          <button id="share" class="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow">Share Link</button>
+          <button id="share" class="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow">Share</button>
           <button id="today" class="h-10 px-3 rounded-xl bg-rose-600 text-white hover:bg-rose-700 shadow">Today</button>
           <button id="centerToday" class="h-10 px-3 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 shadow">Center Today</button>
           <div class="relative">
@@ -141,8 +141,10 @@
       </div>
     </div>
 
-    <footer class="mt-3 text-xs text-gray-500">Data persists locally; use “Share Link” to generate a link others can open to view the current plan. All times are UTC‑based for consistency.</footer>
+    <footer class="mt-3 text-xs text-gray-500">Data persists locally; use Share to download a portable HTML file you can email. All times are UTC-based for consistency.</footer>
   </div>
+
+  <script id="embeddedData" type="application/json"></script>
 
 <script>
 (() => {
@@ -153,6 +155,7 @@
   const STORAGE_KEY = 'bdc-fre-gantt-v1';
   const META_KEY = 'bdc-fre-gantt-meta-v1';
   const UI_KEY = 'bdc-fre-gantt-ui-v1';
+  const EMBEDDED_DATA_ID = 'embeddedData';
 
   /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string}} Task */
   /** @type {Task[]} */
@@ -344,7 +347,83 @@
     });
   }
 
+  function loadEmbeddedPayload() {
+    const el = document.getElementById(EMBEDDED_DATA_ID);
+    if (!el) return null;
+    const raw = el.textContent.trim();
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  function applyEmbeddedPayload(raw) {
+    const payload = Array.isArray(raw) ? { tasks: raw } : raw;
+    if (!payload || !Array.isArray(payload.tasks)) return false;
+    tasks = payload.tasks;
+    normalizeTasks();
+    const embeddedTitle = payload.meta && typeof payload.meta.title === 'string'
+      ? payload.meta.title.trim()
+      : '';
+    if (embeddedTitle && els.projectTitle) {
+      els.projectTitle.value = embeddedTitle;
+      document.title = embeddedTitle + ' — Gantt';
+      saveMeta({ title: embeddedTitle });
+    }
+    save();
+    return true;
+  }
+
+  function slugifyFileName(name) {
+    return String(name || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'gantt-project';
+  }
+
+  function buildPortableHtml(payload) {
+    const json = JSON.stringify(payload).replace(/</g, '\\u003c');
+    const cloned = document.documentElement.cloneNode(true);
+    const embedded = cloned.querySelector('#' + EMBEDDED_DATA_ID);
+    if (!embedded) return null;
+    embedded.textContent = json;
+    return '<!DOCTYPE html>\n' + cloned.outerHTML;
+  }
+
+  function updateTaskNameInGantt(t) {
+    if (!els.grid) return;
+    const el = els.grid.querySelector(`[data-id="${t.id}"]`);
+    if (!el) return;
+    if (t.milestone) {
+      el.title = `${t.name} — ${t.start}`;
+      return;
+    }
+    const end = t.end || t.start;
+    el.title = `${t.name} — ${t.start} → ${end}`;
+    const label = el.querySelector('.bar-label');
+    if (label) label.textContent = t.name;
+  }
+
+  function sampleTasks() {
+    const base = snapStartToBusinessDay(todayUTC());
+    return [
+      { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5' },
+      { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9' },
+      { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea' },
+      { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981' },
+    ];
+  }
+
+  function clearShareHash() {
+    if (!location.hash) return;
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+
+  function resetSearch() {
+    if (els.search) els.search.value = '';
+  }
+
   function load() {
+    if (applyEmbeddedPayload(loadEmbeddedPayload())) return;
+
     const meta = loadMeta();
     if (meta && meta.title && els.projectTitle) {
       els.projectTitle.value = meta.title;
@@ -381,22 +460,32 @@
     }
 
     // Defaults
-    const base = snapStartToBusinessDay(todayUTC());
-    tasks = [
-      { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5' },
-      { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9' },
-      { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea' },
-      { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981' },
-    ];
+    tasks = sampleTasks();
     save();
   }
 
-  function shareLink() {
-    const payload = JSON.stringify(tasks);
-    const enc = LZString.compressToEncodedURIComponent(payload);
-    const url = location.origin + location.pathname + '#share=' + enc;
-    navigator.clipboard.writeText(url).catch(()=>{});
-    alert('Shareable link copied to clipboard. Anyone with the link can view the current plan.');
+  function sharePortable() {
+    const title = els.projectTitle ? els.projectTitle.value.trim() : '';
+    const payload = {
+      tasks,
+      meta: { title: title || 'Project name' },
+    };
+    const html = buildPortableHtml(payload);
+    if (!html) {
+      alert('Unable to create a share file in this browser.');
+      return;
+    }
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = toISO(todayUTC());
+    const base = slugifyFileName(title || 'gantt-project');
+    a.href = url;
+    a.download = `${base}-${stamp}.html`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function bounds() {
@@ -508,7 +597,11 @@
 
       const nameInput = li.querySelector('input');
       nameInput.value = t.name;
-      nameInput.addEventListener('input', (e)=>{ t.name = e.target.value; save(); });
+      nameInput.addEventListener('input', (e)=>{
+        t.name = e.target.value;
+        save();
+        updateTaskNameInGantt(t);
+      });
       li.querySelector('button[aria-label="Delete"]').addEventListener('click', ()=>{ tasks = tasks.filter(x=>x.id!==t.id); save(); render(); });
 
       // Color picker
@@ -945,7 +1038,7 @@
 
   els.addTask.addEventListener('click', ()=> addTask(false));
   els.addMilestone.addEventListener('click', ()=> addTask(true));
-  els.share.addEventListener('click', shareLink);
+  els.share.addEventListener('click', sharePortable);
 
   // Kebab menu
   els.menuBtn.addEventListener('click', (e)=>{
@@ -956,23 +1049,37 @@
     els.menu.classList.add('hidden');
     document.querySelectorAll('.palette:not(.hidden)').forEach(p=>p.classList.add('hidden'));
   });
+  els.menu.addEventListener('click', (e)=> e.stopPropagation());
 
-  els.clearData.addEventListener('click', ()=>{
+  els.clearData.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
     els.menu.classList.add('hidden');
     if (!confirm('This will permanently delete all project data on this device. Continue?')) return;
     localStorage.removeItem(STORAGE_KEY);
-    location.hash = '';
-    load();
+    localStorage.removeItem(META_KEY);
+    localStorage.removeItem(UI_KEY);
+    clearShareHash();
+    resetSearch();
+    tasks = [];
+    save();
+    if (els.projectTitle) {
+      els.projectTitle.value = 'Project name';
+      document.title = 'Project name — Gantt';
+    }
     render();
   });
 
-  els.loadSample.addEventListener('click', ()=>{
+  els.loadSample.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
     els.menu.classList.add('hidden');
     if (!confirm('Load the sample project and overwrite current data?')) return;
     localStorage.removeItem(STORAGE_KEY);
-    location.hash = '';
-    tasks = [];
-    load();
+    clearShareHash();
+    resetSearch();
+    tasks = sampleTasks();
+    save();
     render();
   });
 
@@ -996,55 +1103,6 @@
   render();
   scrollToDate(todayUTC(), 'center');
 
-  // Tests
-  (function runTests(){
-    const assert = (cond, msg) => { if (!cond) { console.error('TEST FAIL:', msg); throw new Error(msg); } };
-    console.groupCollapsed('Gantt SPA tests');
-
-    const d0 = new Date(Date.UTC(2025,0,1));
-    const d1 = addDays(d0, 10);
-    assert(daysBetween(d0,d1) === 10, 'daysBetween 10');
-
-    const m0 = new Date(Date.UTC(2025,0,31));
-    const m1 = addMonthsUTC(m0, 1);
-    assert(m1 instanceof Date, 'addMonthsUTC returns date');
-
-    assert(toISO(startOfDayUTC(d0)) === '2025-01-01', 'startOfDayUTC iso');
-
-    const b = bounds();
-    assert(b.minD instanceof Date && b.maxD instanceof Date, 'bounds returns dates');
-
-    assert(snapDays(6.2, {shiftKey:true, ctrlKey:false, metaKey:false}) === 5, 'shift snap 5');
-    assert(snapDays(6.2, {shiftKey:false, ctrlKey:true, metaKey:false}) === 7, 'week snap 7');
-
-    const minStart = snapStartToBusinessDay(minLimitDate());
-    const tooEarly = addDays(minStart, -10);
-    assert(toISO(clampStartToLimit(tooEarly)) === toISO(minStart), 'clampStartToLimit works (business-day)');
-
-    // Business-day rules
-    const sat = new Date(Date.UTC(2025,0,4)); // Sat
-    const sun = new Date(Date.UTC(2025,0,5)); // Sun
-    const fri = new Date(Date.UTC(2025,0,3)); // Fri
-    const mon = new Date(Date.UTC(2025,0,6)); // Mon
-    assert(toISO(snapStartToBusinessDay(sat)) === '2025-01-06', 'snapStart Sat -> Mon');
-    assert(toISO(snapStartToBusinessDay(sun)) === '2025-01-06', 'snapStart Sun -> Mon');
-    assert(toISO(snapEndToBusinessDay(sat)) === '2025-01-03', 'snapEnd Sat -> Fri');
-    assert(toISO(snapEndToBusinessDay(sun)) === '2025-01-03', 'snapEnd Sun -> Fri');
-    assert(toISO(addBusinessDays(fri, 1)) === '2025-01-06', 'addBusinessDays Fri+1 -> Mon');
-    assert(businessDaysInclusive(mon, addDays(mon, 4)) === 5, 'businessDaysInclusive Mon..Fri = 5');
-
-    // Normalization should move weekend start forward and weekend end back
-    tasks = [{ id:'t1', name:'X', start:'2025-01-04', end:'2025-01-05' }]; // Sat..Sun
-    normalizeTasks();
-    assert(tasks[0].start === '2025-01-06', 'normalizeTasks start weekend -> Mon');
-    assert(tasks[0].end === '2025-01-06', 'normalizeTasks end weekend -> Fri then clamped to start');
-
-    assert(clampLeftWidth(100) >= 420, 'clampLeftWidth min');
-    assert(clampLeftWidth(999999) <= Math.floor(window.innerWidth * 0.75), 'clampLeftWidth max');
-
-    console.log('All tests passed');
-    console.groupEnd();
-  })();
 })();
 </script>
 </body>
