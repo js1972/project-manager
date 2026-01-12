@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Project name — Gantt</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <style>
+    html, body { height: 100%; }
+    :root { --row-h: 38px; --day-w: 24px; --scale-h: 44px; --left-w: 560px; }
+    .gantt-grid-bg {
+      background-image: linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px);
+      background-size: var(--day-w) 100%;
+    }
+    .weekend-shade { background-color: rgba(0,0,0,0.03); }
+    .bar { cursor: grab; user-select: none; position:absolute; }
+    .bar-label { position:absolute; top:0; bottom:0; left: 12px; right: 18px; display:flex; align-items:center; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; text-shadow: 0 1px 1px rgba(0,0,0,0.18); }
+    .bar:active { cursor: grabbing; }
+    .handle-l, .handle-r { position:absolute; top:0; width:10px; height:100%; opacity:0.9; }
+    .handle-l { left:-5px; cursor: w-resize; }
+    .handle-r { right:-5px; cursor: e-resize; }
+    .milestone { width: 14px; height: 14px; transform: rotate(45deg); position:absolute; cursor: grab; user-select:none; }
+    .drop-hover { outline: 2px dashed #4f46e5; outline-offset: -6px; }
+    .scrollbar-thin::-webkit-scrollbar { height: 10px; width: 10px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 6px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+
+    /* Today indicator */
+    .today-col { background-color: rgba(244, 63, 94, 0.08); }
+    .today-line { position:absolute; width:2px; background:#f43f5e; opacity:0.9; }
+
+    /* Limit shading: dates before min allowed */
+    .limit-col { background: repeating-linear-gradient(45deg, rgba(220,38,38,0.08) 0 10px, rgba(220,38,38,0.16) 10px 20px); }
+
+    /* Drag ghost */
+    .dragging { opacity: 0.92; outline: 2px solid rgba(79,70,229,0.35); outline-offset: 2px; }
+
+    /* Resizable splitter */
+    .splitter {
+      width: 8px;
+      cursor: col-resize;
+      background: linear-gradient(to right, transparent, rgba(0,0,0,0.06), transparent);
+    }
+    .splitter:hover { background: linear-gradient(to right, transparent, rgba(79,70,229,0.25), transparent); }
+    .splitter:active { background: linear-gradient(to right, transparent, rgba(79,70,229,0.35), transparent); }
+    .splitter-header { width: 8px; }
+    .no-select { user-select: none !important; }
+    .col-resize { cursor: col-resize !important; }
+
+    /* Color swatch + palette */
+    .swatch { width: 14px; height: 14px; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18); }
+    .swatch-btn { display:flex; align-items:center; justify-content:center; width: 22px; height: 22px; border-radius: 8px; }
+    .swatch-btn:hover { background: rgba(0,0,0,0.04); }
+    .palette { position:absolute; left: 34px; top: 50%; transform: translateY(-50%); background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius: 12px; padding: 8px; box-shadow: 0 10px 24px rgba(0,0,0,0.12); z-index: 60; }
+    .palette-grid { display:grid; grid-template-columns: repeat(8, 18px); gap: 8px; }
+    .palette-dot { width: 18px; height: 18px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18); cursor:pointer; }
+    .palette-dot:hover { transform: translateY(-1px); }
+    .palette-label { font-size: 11px; color: rgba(0,0,0,0.55); margin-bottom: 6px; user-select:none; }
+
+    /* Left pane: keep Task name visible when narrowing */
+    .task-row-grid { grid-template-columns: 20px 26px 1fr 104px 104px 72px 28px; }
+    body.left-hide-dur .task-row-grid { grid-template-columns: 20px 26px 1fr 104px 104px 28px; }
+    body.left-hide-enddur .task-row-grid { grid-template-columns: 20px 26px 1fr 104px 28px; }
+    body.left-hide-dates .task-row-grid { grid-template-columns: 20px 26px 1fr 28px; }
+
+    body.left-hide-dur .col-dur,
+    body.left-hide-enddur .col-end,
+    body.left-hide-enddur .col-dur,
+    body.left-hide-dates .col-start,
+    body.left-hide-dates .col-end,
+    body.left-hide-dates .col-dur { display:none; }
+
+    .task-name { min-width: 160px; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="h-screen w-full flex flex-col py-4 px-4 md:px-6">
+    <header class="mb-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <input id="projectTitle" class="w-full text-2xl md:text-3xl font-semibold tracking-tight bg-transparent outline-none" value="Project name" />
+          <p class="text-sm text-gray-600">Interactive Gantt — reorder, drag, resize, add milestones, filter, delete. Persistent + shareable.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="search" type="search" placeholder="Filter…" class="h-10 px-3 rounded-xl border border-gray-300 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <button id="addTask" class="h-10 px-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow">+ Task</button>
+          <button id="addMilestone" class="h-10 px-3 rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow">+ Milestone</button>
+          <button id="share" class="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow">Share Link</button>
+          <button id="today" class="h-10 px-3 rounded-xl bg-rose-600 text-white hover:bg-rose-700 shadow">Today</button>
+          <button id="centerToday" class="h-10 px-3 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 shadow">Center Today</button>
+          <div class="relative">
+            <button id="menuBtn" class="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-200 hover:bg-gray-300 shadow" aria-label="Menu">⋮</button>
+            <div id="menu" class="hidden absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg ring-1 ring-black/5 z-50">
+              <button id="loadSample" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Load sample project</button>
+              <button id="clearData" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Clear all data…</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+        <div><span class="font-medium text-gray-600">Drag:</span> cursor-locked</div>
+        <div><span class="font-medium text-gray-600">Snap:</span> Shift = 5 days, Ctrl/Cmd = weeks</div>
+        <div><span class="font-medium text-gray-600">Limit:</span> can’t plan earlier than today − 1 month</div>
+      </div>
+    </header>
+
+    <div class="rounded-2xl bg-white shadow ring-1 ring-gray-200 overflow-hidden flex-1 flex flex-col">
+      <!-- Column headers -->
+      <div id="headerGrid" class="grid" style="grid-template-columns: var(--left-w) 8px 1fr;">
+        <div class="px-4 py-2 text-xs font-medium text-gray-600 border-b">
+          <div class="grid items-center task-row-grid" style="gap: 8px;">
+            <div></div>
+            <div></div>
+            <div>Task</div>
+            <div class="text-right col-start">Start</div>
+            <div class="text-right col-end">End</div>
+            <div class="text-right col-dur">Dur</div>
+            <div></div>
+          </div>
+        </div>
+        <div class="splitter splitter-header border-b" aria-hidden="true"></div>
+        <div class="px-4 py-2 text-xs font-medium text-gray-600 border-b">Timeline</div>
+      </div>
+
+      <div id="mainGrid" class="grid flex-1" style="grid-template-columns: var(--left-w) 8px 1fr;">
+        <div id="leftPane" class="overflow-y-auto">
+          <div id="leftSpacer" class="sticky top-0 z-20 bg-white border-b" style="height: var(--scale-h);"></div>
+          <ul id="taskList"></ul>
+        </div>
+
+        <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize task panel"></div>
+
+        <!-- Right: single scroll container for BOTH scale + chart (no syncing needed) -->
+        <div id="rightPane" class="relative overflow-auto scrollbar-thin">
+          <div id="scaleSticky" class="sticky top-0 z-20 bg-white border-b">
+            <div id="scale" class="text-xs text-gray-600 select-none"></div>
+          </div>
+          <div id="ganttGrid" class="relative min-w-max"></div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="mt-3 text-xs text-gray-500">Data persists locally; use “Share Link” to generate a link others can open to view the current plan. All times are UTC‑based for consistency.</footer>
+  </div>
+
+<script>
+(() => {
+  const DAY_MS = 24*60*60*1000;
+  const ROW_H = 38;
+  const DAY_W = 24;
+  const SCALE_H = 44; // fallback; actual scale height is measured from DOM for perfect alignment
+  const STORAGE_KEY = 'bdc-fre-gantt-v1';
+  const META_KEY = 'bdc-fre-gantt-meta-v1';
+  const UI_KEY = 'bdc-fre-gantt-ui-v1';
+
+  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string}} Task */
+  /** @type {Task[]} */
+  let tasks = [];
+  let filteredIds = new Set();
+
+  let dragCtx = null;
+
+  const els = {
+    projectTitle: document.getElementById('projectTitle'),
+    search: document.getElementById('search'),
+    addTask: document.getElementById('addTask'),
+    addMilestone: document.getElementById('addMilestone'),
+    share: document.getElementById('share'),
+    scale: document.getElementById('scale'),
+    left: document.getElementById('taskList'),
+    grid: document.getElementById('ganttGrid'),
+    rightPane: document.getElementById('rightPane'),
+    todayBtn: document.getElementById('today'),
+    centerTodayBtn: document.getElementById('centerToday'),
+    menuBtn: document.getElementById('menuBtn'),
+    menu: document.getElementById('menu'),
+    clearData: document.getElementById('clearData'),
+    loadSample: document.getElementById('loadSample'),
+    splitter: document.getElementById('splitter'),
+  };
+
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const toDate = (iso) => new Date(iso + 'T00:00:00Z');
+  const toISO = (d) => d.toISOString().slice(0,10);
+  const addDays = (d, n) => new Date(d.getTime() + n*DAY_MS);
+  const addMonthsUTC = (d, months) => {
+    // Preserve UTC day as much as possible; JS will roll overflow days into next month.
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + months, d.getUTCDate()));
+  };
+  const daysBetween = (a,b) => Math.round((b - a)/DAY_MS);
+  const fmtMon = (d) => d.toLocaleString('en-GB',{month:'short', timeZone:'UTC'});
+  const fmtDay = (d) => d.getUTCDate();
+  const startOfDayUTC = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const todayUTC = () => startOfDayUTC(new Date());
+  const isWeekend = (d) => [0,6].includes(d.getUTCDay());
+  const isBusinessDay = (d) => !isWeekend(d);
+
+  // Business day rules (Model B)
+  // - Start dates: never on weekend; if they land on weekend, snap forward to Monday.
+  // - End dates: never on weekend; if they land on weekend, snap back to Friday.
+  function snapStartToBusinessDay(d) {
+    const dd = startOfDayUTC(d);
+    if (!isWeekend(dd)) return dd;
+    // Sat -> +2, Sun -> +1
+    const dow = dd.getUTCDay();
+    return addDays(dd, dow === 6 ? 2 : 1);
+  }
+  function snapEndToBusinessDay(d) {
+    const dd = startOfDayUTC(d);
+    if (!isWeekend(dd)) return dd;
+    // Sat -> -1, Sun -> -2
+    const dow = dd.getUTCDay();
+    return addDays(dd, dow === 6 ? -1 : -2);
+  }
+
+  // Add N business days (can be negative). N=0 returns the same business day (snapped to business day).
+  function addBusinessDays(date, n) {
+    let d = startOfDayUTC(date);
+    // For increments, always operate on business days.
+    d = n >= 0 ? snapStartToBusinessDay(d) : snapEndToBusinessDay(d);
+    if (n === 0) return d;
+    const step = n > 0 ? 1 : -1;
+    let remaining = Math.abs(n);
+    while (remaining > 0) {
+      d = addDays(d, step);
+      if (isBusinessDay(d)) remaining--;
+    }
+    return d;
+  }
+
+  // Inclusive business-day count from start..end (both should be business days)
+  function businessDaysInclusive(start, end) {
+    const s = startOfDayUTC(start);
+    const e = startOfDayUTC(end);
+    if (e < s) return 0;
+    let d = s;
+    let count = 0;
+    while (d <= e) {
+      if (isBusinessDay(d)) count++;
+      d = addDays(d, 1);
+    }
+    return count;
+  }
+
+  const minLimitDate = () => addDays(todayUTC(), -31);
+
+  // Colors
+  const PALETTE = [
+    '#4f46e5', // indigo
+    '#0ea5e9', // sky
+    '#14b8a6', // teal
+    '#10b981', // emerald
+    '#84cc16', // lime
+    '#f59e0b', // amber
+    '#f97316', // orange
+    '#ef4444', // red
+    '#ec4899', // pink
+    '#a855f7', // purple
+    '#64748b', // slate
+    '#0f172a', // near-black
+  ];
+  const DEFAULT_TASK_COLOR = '#4f46e5';
+  const DEFAULT_MILESTONE_COLOR = '#9333ea';
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#39;');
+  }
+
+  function hexToRgb(hex) {
+    const h = String(hex || '').trim();
+    const m = h.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!m) return null;
+    let v = m[1];
+    if (v.length === 3) v = v.split('').map(ch => ch + ch).join('');
+    const n = parseInt(v, 16);
+    return { r: (n>>16)&255, g: (n>>8)&255, b: n&255 };
+  }
+  function textColorForBg(hex) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return '#ffffff';
+    const srgb = [rgb.r, rgb.g, rgb.b].map(v => {
+      const c = v/255;
+      return c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+    });
+    const L = 0.2126*srgb[0] + 0.7152*srgb[1] + 0.0722*srgb[2];
+    return L > 0.52 ? '#0f172a' : '#ffffff';
+  }
+
+  function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
+  function saveMeta(meta) { localStorage.setItem(META_KEY, JSON.stringify(meta)); }
+  function loadMeta() {
+    const raw = localStorage.getItem(META_KEY);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+  function saveUI(ui) { localStorage.setItem(UI_KEY, JSON.stringify(ui)); }
+  function loadUI() {
+    const raw = localStorage.getItem(UI_KEY);
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch { return null; }
+  }
+
+  function clampLeftWidth(px) {
+    const min = 420;
+    const max = Math.max(min + 240, Math.floor(window.innerWidth * 0.75));
+    return Math.max(min, Math.min(max, px));
+  }
+
+  function applyLeftLayout(w) {
+    document.body.classList.remove('left-hide-dur','left-hide-enddur','left-hide-dates');
+    if (w < 440) document.body.classList.add('left-hide-dates');
+    else if (w < 480) document.body.classList.add('left-hide-enddur');
+    else if (w < 520) document.body.classList.add('left-hide-dur');
+  }
+
+  function setLeftWidth(px, persist=false) {
+    const w = clampLeftWidth(px);
+    document.documentElement.style.setProperty('--left-w', w + 'px');
+    applyLeftLayout(w);
+    if (persist) saveUI({ leftW: w });
+  }
+
+  function normalizeTasks() {
+    // Ensure all tasks comply with business-day rules.
+    tasks = tasks.map(t => {
+      const out = { ...t };
+      const s = snapStartToBusinessDay(toDate(out.start));
+      out.start = toISO(s);
+      if (out.milestone) {
+        delete out.end;
+        return out;
+      }
+      const e0 = out.end ? toDate(out.end) : s;
+      let e = snapEndToBusinessDay(e0);
+      if (e < s) e = s;
+      out.end = toISO(e);
+      return out;
+    });
+  }
+
+  function load() {
+    const meta = loadMeta();
+    if (meta && meta.title && els.projectTitle) {
+      els.projectTitle.value = meta.title;
+      document.title = meta.title + ' — Gantt';
+    }
+
+    // Shared link takes precedence
+    if (location.hash.startsWith('#share=')) {
+      try {
+        const enc = decodeURIComponent(location.hash.slice(7));
+        const json = LZString.decompressFromEncodedURIComponent(enc);
+        const data = JSON.parse(json);
+        if (!Array.isArray(data)) throw new Error('Invalid shared payload');
+        tasks = data;
+        normalizeTasks();
+        save();
+        return;
+      } catch (e) {
+        console.warn('Failed to parse shared link', e);
+      }
+    }
+
+    // Local storage
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        tasks = JSON.parse(raw);
+        normalizeTasks();
+        save();
+        return;
+      } catch (e) {
+        console.warn('Failed to parse local data', e);
+      }
+    }
+
+    // Defaults
+    const base = snapStartToBusinessDay(todayUTC());
+    tasks = [
+      { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5' },
+      { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9' },
+      { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea' },
+      { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981' },
+    ];
+    save();
+  }
+
+  function shareLink() {
+    const payload = JSON.stringify(tasks);
+    const enc = LZString.compressToEncodedURIComponent(payload);
+    const url = location.origin + location.pathname + '#share=' + enc;
+    navigator.clipboard.writeText(url).catch(()=>{});
+    alert('Shareable link copied to clipboard. Anyone with the link can view the current plan.');
+  }
+
+  function bounds() {
+    let minD = new Date('2999-01-01T00:00:00Z');
+    let maxD = new Date('1970-01-01T00:00:00Z');
+    for (const t of tasks) {
+      const s = toDate(t.start);
+      const e = t.milestone ? s : toDate(t.end || t.start);
+      if (s < minD) minD = s;
+      if (e > maxD) maxD = e;
+    }
+
+    const limit = minLimitDate();
+    if (addDays(limit, -7) < minD) minD = addDays(limit, -7);
+    minD = addDays(minD, -7);
+
+    const minForwardMax = addMonthsUTC(todayUTC(), 12);
+    if (minForwardMax > maxD) maxD = minForwardMax;
+
+    maxD = addDays(maxD, 14);
+
+    return {minD, maxD};
+  }
+
+  function scrollToDate(date, align='left') {
+    const {minD} = bounds();
+    const x = daysBetween(minD, date) * DAY_W;
+    const pane = els.rightPane;
+    pane.scrollLeft = Math.max(0, align === 'center' ? x - pane.clientWidth/2 : x);
+  }
+
+  function clampStartToLimit(date) {
+    const minStart = snapStartToBusinessDay(minLimitDate());
+    const d = startOfDayUTC(date);
+    return snapStartToBusinessDay(d < minStart ? minStart : d);
+  }
+
+  function getScaleH() {
+    const el = document.getElementById('scaleSticky');
+    const h = el ? el.offsetHeight : 0;
+    return h > 0 ? h : SCALE_H;
+  }
+
+  function render() {
+    const q = els.search.value.trim().toLowerCase();
+    filteredIds = new Set(tasks.filter(t => t.name.toLowerCase().includes(q)).map(t => t.id));
+
+    const {minD, maxD} = bounds();
+    const dayCount = daysBetween(minD, addDays(maxD, 1));
+    const gridWidth = Math.max(800, dayCount * DAY_W);
+    const totalH = tasks.length * ROW_H;
+
+    els.grid.style.setProperty('--row-h', ROW_H + 'px');
+    els.grid.style.setProperty('--day-w', DAY_W + 'px');
+
+    renderScale(minD, dayCount, gridWidth);
+
+    const scaleH = getScaleH();
+    els.grid.style.setProperty('--scale-h', scaleH + 'px');
+    const leftSpacer = document.getElementById('leftSpacer');
+    if (leftSpacer) leftSpacer.style.height = scaleH + 'px';
+
+    requestAnimationFrame(() => {
+      const spacer = document.getElementById('leftSpacer');
+      if (!spacer) return;
+      const rightTop = els.grid.getBoundingClientRect().top;
+      const leftTop = els.left.getBoundingClientRect().top;
+      const delta = Math.round(rightTop - leftTop);
+      if (Math.abs(delta) >= 1) spacer.style.height = (scaleH + delta) + 'px';
+    });
+
+    // Left list
+    els.left.innerHTML = '';
+    const paletteDotsHTML = PALETTE.map(c => `<div class="palette-dot" data-color="${escapeHtml(c)}" style="background:${escapeHtml(c)}" title="${escapeHtml(c)}"></div>`).join('');
+    tasks.forEach((t) => {
+      const visible = filteredIds.has(t.id);
+      const li = document.createElement('li');
+      li.className = `group ${visible ? '' : 'hidden'}`;
+      li.draggable = true;
+      li.dataset.id = t.id;
+
+      const s = toDate(t.start);
+      const e = t.milestone ? s : toDate(t.end || t.start);
+      const startTxt = t.start;
+      const endTxt = t.milestone ? '—' : (t.end || t.start);
+      const durBiz = t.milestone ? null : businessDaysInclusive(s, e);
+      const durTxt = t.milestone ? '—' : `${durBiz}d`;
+
+      const curColor = t.color || (t.milestone ? DEFAULT_MILESTONE_COLOR : DEFAULT_TASK_COLOR);
+
+      li.innerHTML = `
+        <div class="relative">
+          <div class="grid items-center px-3 task-row-grid border-b border-gray-100" style="height:${ROW_H}px; gap: 8px;">
+            <div class="text-gray-400 cursor-grab" title="Drag to reorder">≡</div>
+            <button type="button" class="swatch-btn" title="Change color" aria-label="Change color" draggable="false">
+              <span class="swatch" style="background:${curColor}"></span>
+            </button>
+            <input class="min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
+            <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-start">${startTxt}</div>
+            <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-end">${endTxt}</div>
+            <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-dur">${durTxt}</div>
+            <button type="button" class="text-gray-400 hover:text-red-600" title="Delete" aria-label="Delete">✕</button>
+          </div>
+          <div class="palette hidden" role="menu" aria-label="Color palette">
+            <div class="palette-label">Color</div>
+            <div class="palette-grid">${paletteDotsHTML}</div>
+          </div>
+        </div>`;
+
+      const nameInput = li.querySelector('input');
+      nameInput.value = t.name;
+      nameInput.addEventListener('input', (e)=>{ t.name = e.target.value; save(); });
+      li.querySelector('button[aria-label="Delete"]').addEventListener('click', ()=>{ tasks = tasks.filter(x=>x.id!==t.id); save(); render(); });
+
+      // Color picker
+      const swatchBtn = li.querySelector('.swatch-btn');
+      const palette = li.querySelector('.palette');
+      swatchBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        document.querySelectorAll('.palette:not(.hidden)').forEach(p=>{ if (p!==palette) p.classList.add('hidden'); });
+        palette.classList.toggle('hidden');
+      });
+      palette.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const dot = e.target.closest('.palette-dot');
+        if (!dot) return;
+        t.color = dot.dataset.color;
+        save();
+        render();
+      });
+
+      // Reorder via HTML DnD
+      li.addEventListener('dragstart', (e)=>{ e.dataTransfer.setData('text/plain', t.id); setTimeout(()=> li.classList.add('opacity-50'),0); });
+      li.addEventListener('dragend', ()=> li.classList.remove('opacity-50'));
+      li.addEventListener('dragover', (e)=>{ e.preventDefault(); li.classList.add('drop-hover'); });
+      li.addEventListener('dragleave', ()=> li.classList.remove('drop-hover'));
+      li.addEventListener('drop', (e)=>{
+        e.preventDefault(); li.classList.remove('drop-hover');
+        const draggedId = e.dataTransfer.getData('text/plain');
+        if (!draggedId || draggedId===t.id) return;
+        const from = tasks.findIndex(x=>x.id===draggedId);
+        const to = tasks.findIndex(x=>x.id===t.id);
+        const [moved] = tasks.splice(from,1);
+        tasks.splice(to,0,moved);
+        save(); render();
+      });
+
+      els.left.appendChild(li);
+    });
+
+    // Grid area
+    els.grid.innerHTML = '';
+    els.grid.style.width = gridWidth + 'px';
+    els.grid.style.height = totalH + 'px';
+
+    // Today shading + line
+    const tdy = todayUTC();
+    const dayOffsetToday = daysBetween(minD, tdy);
+    if (dayOffsetToday >= 0 && dayOffsetToday <= dayCount) {
+      const shade = document.createElement('div');
+      shade.className = 'today-col absolute';
+      shade.style.top = '0px';
+      shade.style.left = (dayOffsetToday * DAY_W) + 'px';
+      shade.style.width = DAY_W + 'px';
+      shade.style.height = totalH + 'px';
+      els.grid.appendChild(shade);
+
+      const line = document.createElement('div');
+      line.className = 'today-line absolute';
+      line.style.top = '0px';
+      line.style.left = (dayOffsetToday * DAY_W) + 'px';
+      line.style.height = totalH + 'px';
+      els.grid.appendChild(line);
+    }
+
+    // Limit shading
+    const limit = minLimitDate();
+    const limitOffset = daysBetween(minD, limit);
+    if (limitOffset > 0) {
+      const limitShade = document.createElement('div');
+      limitShade.className = 'limit-col absolute';
+      limitShade.style.top = '0px';
+      limitShade.style.left = '0px';
+      limitShade.style.width = (limitOffset * DAY_W) + 'px';
+      limitShade.style.height = totalH + 'px';
+      els.grid.appendChild(limitShade);
+    }
+
+    // Grid background
+    const gridBg = document.createElement('div');
+    gridBg.className = 'gantt-grid-bg absolute';
+    gridBg.style.top = '0px';
+    gridBg.style.left = '0px';
+    gridBg.style.width = gridWidth + 'px';
+    gridBg.style.height = totalH + 'px';
+    for (let i=0;i<dayCount;i++) {
+      const d = addDays(minD, i);
+      if (isWeekend(d)) {
+        const w = document.createElement('div');
+        w.className = 'weekend-shade absolute top-0';
+        w.style.left = (i*DAY_W) + 'px';
+        w.style.width = DAY_W + 'px';
+        w.style.height = '100%';
+        gridBg.appendChild(w);
+      }
+    }
+    els.grid.appendChild(gridBg);
+
+    // Bars + milestones
+    tasks.forEach((t, idx) => {
+      if (!filteredIds.has(t.id)) return;
+      const yBase = idx * ROW_H;
+      const s = toDate(t.start);
+      const e = t.milestone ? s : toDate(t.end || t.start);
+      const x = daysBetween(minD, s) * DAY_W;
+      const w = t.milestone ? 0 : Math.max(DAY_W, (daysBetween(s, addDays(e,1)) * DAY_W));
+
+      if (t.milestone) {
+        const ms = document.createElement('div');
+        ms.className = 'milestone';
+        ms.style.left = (x - 7) + 'px';
+        ms.style.top = (yBase + (ROW_H - 14)/2) + 'px';
+        ms.style.background = t.color || DEFAULT_MILESTONE_COLOR;
+        ms.title = `${t.name} — ${t.start}`;
+        ms.dataset.id = t.id;
+        ms.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'ms-move', ms, minD));
+        els.grid.appendChild(ms);
+      } else {
+        const bar = document.createElement('div');
+        bar.className = 'bar rounded-md shadow';
+        bar.style.left = x + 'px';
+        bar.style.top = (yBase + (ROW_H-24)/2) + 'px';
+        bar.style.height = '24px';
+        bar.style.width = w + 'px';
+        const bg = t.color || DEFAULT_TASK_COLOR;
+        bar.style.background = bg;
+        bar.title = `${t.name} — ${t.start} → ${t.end}`;
+
+        // Optional label inside the bar (only when there's room)
+        const minLabelPx = 120;
+        if (w >= minLabelPx) {
+          const label = document.createElement('div');
+          label.className = 'bar-label';
+          label.textContent = t.name;
+          label.style.color = textColorForBg(bg);
+          bar.appendChild(label);
+        }
+        bar.dataset.id = t.id;
+
+        const hl = document.createElement('div'); hl.className='handle-l';
+        const hr = document.createElement('div'); hr.className='handle-r';
+        bar.appendChild(hl); bar.appendChild(hr);
+
+        hl.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'resize-l', bar, minD));
+        hr.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'resize-r', bar, minD));
+        bar.addEventListener('mousedown', (ev)=> {
+          if (ev.target===hl || ev.target===hr) return;
+          startDrag(ev, t.id, 'move', bar, minD);
+        });
+
+        els.grid.appendChild(bar);
+      }
+    });
+  }
+
+  function renderScale(minD, dayCount, gridWidth) {
+    const months = [];
+    let lastMon = fmtMon(minD);
+    let curStart = 0;
+    for (let i=0;i<dayCount;i++) {
+      const d = addDays(minD, i);
+      const mon = fmtMon(d);
+      if (mon !== lastMon) {
+        months.push({ label: lastMon, span: i - curStart });
+        lastMon = mon; curStart = i;
+      }
+    }
+    months.push({ label: lastMon, span: dayCount - curStart });
+
+    const outer = document.createElement('div');
+    outer.style.width = gridWidth + 'px';
+
+    const monthRow = document.createElement('div');
+    monthRow.className = 'flex border-b';
+    months.forEach(m => {
+      const cell = document.createElement('div');
+      cell.className = 'px-2 py-1 text-[11px] text-gray-700';
+      cell.style.width = (m.span * DAY_W) + 'px';
+      cell.textContent = m.label;
+      monthRow.appendChild(cell);
+    });
+
+    const daysRow = document.createElement('div');
+    daysRow.className = 'flex';
+    for (let i=0;i<dayCount;i++) {
+      const d = addDays(minD, i);
+      const cell = document.createElement('div');
+      cell.className = 'text-[10px] text-gray-500 text-center';
+      cell.style.width = DAY_W + 'px';
+      cell.textContent = fmtDay(d);
+      daysRow.appendChild(cell);
+    }
+
+    outer.appendChild(monthRow);
+    outer.appendChild(daysRow);
+
+    els.scale.innerHTML = '';
+    els.scale.appendChild(outer);
+  }
+
+  // ===== Dragging (cursor-locked, no full render per move) =====
+
+  function cursorContentX(ev) {
+    const pane = els.rightPane;
+    const rect = pane.getBoundingClientRect();
+    return (ev.clientX - rect.left) + pane.scrollLeft;
+  }
+
+  function startDrag(ev, id, type, el, frozenMinD) {
+    ev.preventDefault();
+    const t = tasks.find(x=>x.id===id);
+    if (!t) return;
+
+    const x = cursorContentX(ev);
+    const elLeftPx = el.offsetLeft;
+    const elWidthPx = el.getBoundingClientRect().width;
+
+    let anchorPx = 0;
+    if (type === 'move') anchorPx = x - elLeftPx;
+    else if (type === 'ms-move') anchorPx = x - (elLeftPx + 7);
+    else if (type === 'resize-l') anchorPx = x - elLeftPx;
+    else if (type === 'resize-r') anchorPx = x - (elLeftPx + elWidthPx);
+
+    dragCtx = {
+      type,
+      id,
+      el,
+      minD: frozenMinD,
+      startStartISO: t.start,
+      startEndISO: t.end,
+      anchorPx,
+      pendingStartISO: t.start,
+      pendingEndISO: t.end,
+    };
+
+    el.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onDragMove);
+    window.addEventListener('mouseup', endDrag, { once: true });
+  }
+
+  function snapDays(deltaDays, ev) {
+    const step = (ev.ctrlKey || ev.metaKey) ? 7 : (ev.shiftKey ? 5 : 1);
+    return Math.round(deltaDays / step) * step;
+  }
+
+  function autoScrollIfNearEdge(ev) {
+    const pane = els.rightPane;
+    const rect = pane.getBoundingClientRect();
+    const edge = 60;
+    const speed = 28;
+    if (ev.clientX < rect.left + edge) pane.scrollLeft = Math.max(0, pane.scrollLeft - speed);
+    else if (ev.clientX > rect.right - edge) pane.scrollLeft += speed;
+  }
+
+  function onDragMove(ev) {
+    if (!dragCtx) return;
+    autoScrollIfNearEdge(ev);
+
+    const t = tasks.find(x=>x.id===dragCtx.id);
+    if (!t) return;
+
+    const x = cursorContentX(ev);
+
+    const minD = dragCtx.minD;
+    const start0 = toDate(dragCtx.startStartISO);
+    const end0 = toDate(dragCtx.startEndISO || dragCtx.startStartISO);
+    const durBiz = t.milestone ? 0 : businessDaysInclusive(start0, end0);
+
+    if (dragCtx.type === 'move' || dragCtx.type === 'ms-move') {
+      const desiredStartLeftPx = x - dragCtx.anchorPx;
+      const desiredStartDay = desiredStartLeftPx / DAY_W;
+      const startDay0 = daysBetween(minD, start0);
+      const snappedStartDay = startDay0 + snapDays(desiredStartDay - startDay0, ev);
+
+      let newStart = addDays(minD, snappedStartDay);
+      newStart = clampStartToLimit(newStart);
+
+      if (t.milestone || dragCtx.type === 'ms-move') {
+        dragCtx.pendingStartISO = toISO(newStart);
+        dragCtx.el.style.left = ((daysBetween(minD, newStart) * DAY_W) - 7) + 'px';
+      } else {
+        const bizLen = Math.max(1, durBiz);
+        const newEnd = addBusinessDays(newStart, bizLen - 1);
+        dragCtx.pendingStartISO = toISO(newStart);
+        dragCtx.pendingEndISO = toISO(newEnd);
+        dragCtx.el.style.left = (daysBetween(minD, newStart) * DAY_W) + 'px';
+      }
+      return;
+    }
+
+    if (dragCtx.type === 'resize-l') {
+      const desiredLeftPx = x - dragCtx.anchorPx;
+      const desiredDay = desiredLeftPx / DAY_W;
+      const startDay0 = daysBetween(minD, start0);
+      const snappedDay = startDay0 + snapDays(desiredDay - startDay0, ev);
+
+      let newStart = addDays(minD, snappedDay);
+      newStart = clampStartToLimit(newStart);
+      if (newStart > end0) newStart = end0;
+
+      dragCtx.pendingStartISO = toISO(newStart);
+
+      const newLeftPx = daysBetween(minD, newStart) * DAY_W;
+      const endRightPx = daysBetween(minD, end0) * DAY_W + DAY_W;
+      dragCtx.el.style.left = newLeftPx + 'px';
+      dragCtx.el.style.width = Math.max(DAY_W, endRightPx - newLeftPx) + 'px';
+      return;
+    }
+
+    if (dragCtx.type === 'resize-r') {
+      const desiredRightPx = x - dragCtx.anchorPx;
+      const desiredDay = desiredRightPx / DAY_W;
+      const endDay0 = daysBetween(minD, end0);
+      const snappedDay = endDay0 + snapDays(desiredDay - endDay0, ev);
+
+      let newEnd = addDays(minD, snappedDay);
+      newEnd = snapEndToBusinessDay(newEnd);
+      if (newEnd < start0) newEnd = start0;
+
+      dragCtx.pendingEndISO = toISO(newEnd);
+
+      const leftPx = daysBetween(minD, start0) * DAY_W;
+      const rightPx = daysBetween(minD, newEnd) * DAY_W + DAY_W;
+      dragCtx.el.style.width = Math.max(DAY_W, rightPx - leftPx) + 'px';
+      return;
+    }
+  }
+
+  function endDrag() {
+    window.removeEventListener('mousemove', onDragMove);
+    document.body.style.userSelect = '';
+
+    if (!dragCtx) return;
+
+    const t = tasks.find(x=>x.id===dragCtx.id);
+    if (t) {
+      if (dragCtx.pendingStartISO) t.start = dragCtx.pendingStartISO;
+      if (!t.milestone && dragCtx.pendingEndISO) t.end = dragCtx.pendingEndISO;
+    }
+
+    dragCtx.el?.classList.remove('dragging');
+    dragCtx = null;
+
+    save();
+    render();
+  }
+
+  function addTask(defaultMilestone=false) {
+    const base = snapStartToBusinessDay(todayUTC());
+    const s = toISO(base);
+    if (defaultMilestone) {
+      tasks.push({
+        id: uid(),
+        name: 'New Milestone',
+        start: s,
+        milestone: true,
+        color: DEFAULT_MILESTONE_COLOR
+      });
+    } else {
+      const end = toISO(addBusinessDays(base, 5-1));
+      tasks.push({
+        id: uid(),
+        name: 'New Task',
+        start: s,
+        end,
+        milestone: false,
+        color: DEFAULT_TASK_COLOR
+      });
+    }
+    save();
+    render();
+    requestAnimationFrame(()=>{
+      const li = document.querySelector('#taskList li:last-child input');
+      if (li) { li.focus(); li.select(); }
+    });
+  }
+
+  // ===== Resizable splitter =====
+  (function initSplitter(){
+    const ui = loadUI();
+    if (ui && typeof ui.leftW === 'number') setLeftWidth(ui.leftW, false);
+    else {
+      const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--left-w'), 10) || 560;
+      applyLeftLayout(clampLeftWidth(cur));
+    }
+
+    let resizing = false;
+    let startX = 0;
+    let startW = 0;
+
+    function onMove(e) {
+      if (!resizing) return;
+      const dx = e.clientX - startX;
+      setLeftWidth(startW + dx, false);
+    }
+    function onUp() {
+      if (!resizing) return;
+      resizing = false;
+      document.body.classList.remove('no-select','col-resize');
+      const cur = getComputedStyle(document.documentElement).getPropertyValue('--left-w').trim();
+      const px = parseInt(cur.replace('px',''), 10);
+      if (Number.isFinite(px)) saveUI({ leftW: clampLeftWidth(px) });
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    }
+
+    els.splitter?.addEventListener('mousedown', (e)=>{
+      e.preventDefault();
+      resizing = true;
+      startX = e.clientX;
+      const cur = getComputedStyle(document.documentElement).getPropertyValue('--left-w').trim();
+      startW = parseInt(cur.replace('px',''), 10) || 560;
+      document.body.classList.add('no-select','col-resize');
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+
+    els.splitter?.addEventListener('dblclick', ()=>{
+      const cur = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--left-w'), 10) || 560;
+      const target = cur < 520 ? 680 : 480;
+      setLeftWidth(target, true);
+    });
+  })();
+
+  // ===== Events =====
+  els.search.addEventListener('input', render);
+
+  if (els.projectTitle) {
+    els.projectTitle.addEventListener('input', () => {
+      const title = els.projectTitle.value.trim() || 'Project name';
+      document.title = title + ' — Gantt';
+      saveMeta({ title });
+    });
+  }
+
+  els.addTask.addEventListener('click', ()=> addTask(false));
+  els.addMilestone.addEventListener('click', ()=> addTask(true));
+  els.share.addEventListener('click', shareLink);
+
+  // Kebab menu
+  els.menuBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    els.menu.classList.toggle('hidden');
+  });
+  document.addEventListener('click', ()=> {
+    els.menu.classList.add('hidden');
+    document.querySelectorAll('.palette:not(.hidden)').forEach(p=>p.classList.add('hidden'));
+  });
+
+  els.clearData.addEventListener('click', ()=>{
+    els.menu.classList.add('hidden');
+    if (!confirm('This will permanently delete all project data on this device. Continue?')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    location.hash = '';
+    load();
+    render();
+  });
+
+  els.loadSample.addEventListener('click', ()=>{
+    els.menu.classList.add('hidden');
+    if (!confirm('Load the sample project and overwrite current data?')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    location.hash = '';
+    tasks = [];
+    load();
+    render();
+  });
+
+  els.todayBtn.addEventListener('click', ()=> scrollToDate(todayUTC(), 'left'));
+  els.centerTodayBtn.addEventListener('click', ()=> scrollToDate(todayUTC(), 'center'));
+
+  document.addEventListener('keydown', (e)=>{
+    if ((e.key === 't' || e.key === 'T') && !e.target.closest('input, textarea')) {
+      e.preventDefault();
+      scrollToDate(todayUTC(), 'center');
+    }
+  });
+
+  // Vertical sync left/right
+  const leftPane = document.getElementById('leftPane');
+  leftPane.addEventListener('scroll', ()=> { els.rightPane.scrollTop = leftPane.scrollTop; });
+  els.rightPane.addEventListener('scroll', ()=> { leftPane.scrollTop = els.rightPane.scrollTop; });
+
+  // Init
+  load();
+  render();
+  scrollToDate(todayUTC(), 'center');
+
+  // Tests
+  (function runTests(){
+    const assert = (cond, msg) => { if (!cond) { console.error('TEST FAIL:', msg); throw new Error(msg); } };
+    console.groupCollapsed('Gantt SPA tests');
+
+    const d0 = new Date(Date.UTC(2025,0,1));
+    const d1 = addDays(d0, 10);
+    assert(daysBetween(d0,d1) === 10, 'daysBetween 10');
+
+    const m0 = new Date(Date.UTC(2025,0,31));
+    const m1 = addMonthsUTC(m0, 1);
+    assert(m1 instanceof Date, 'addMonthsUTC returns date');
+
+    assert(toISO(startOfDayUTC(d0)) === '2025-01-01', 'startOfDayUTC iso');
+
+    const b = bounds();
+    assert(b.minD instanceof Date && b.maxD instanceof Date, 'bounds returns dates');
+
+    assert(snapDays(6.2, {shiftKey:true, ctrlKey:false, metaKey:false}) === 5, 'shift snap 5');
+    assert(snapDays(6.2, {shiftKey:false, ctrlKey:true, metaKey:false}) === 7, 'week snap 7');
+
+    const minStart = snapStartToBusinessDay(minLimitDate());
+    const tooEarly = addDays(minStart, -10);
+    assert(toISO(clampStartToLimit(tooEarly)) === toISO(minStart), 'clampStartToLimit works (business-day)');
+
+    // Business-day rules
+    const sat = new Date(Date.UTC(2025,0,4)); // Sat
+    const sun = new Date(Date.UTC(2025,0,5)); // Sun
+    const fri = new Date(Date.UTC(2025,0,3)); // Fri
+    const mon = new Date(Date.UTC(2025,0,6)); // Mon
+    assert(toISO(snapStartToBusinessDay(sat)) === '2025-01-06', 'snapStart Sat -> Mon');
+    assert(toISO(snapStartToBusinessDay(sun)) === '2025-01-06', 'snapStart Sun -> Mon');
+    assert(toISO(snapEndToBusinessDay(sat)) === '2025-01-03', 'snapEnd Sat -> Fri');
+    assert(toISO(snapEndToBusinessDay(sun)) === '2025-01-03', 'snapEnd Sun -> Fri');
+    assert(toISO(addBusinessDays(fri, 1)) === '2025-01-06', 'addBusinessDays Fri+1 -> Mon');
+    assert(businessDaysInclusive(mon, addDays(mon, 4)) === 5, 'businessDaysInclusive Mon..Fri = 5');
+
+    // Normalization should move weekend start forward and weekend end back
+    tasks = [{ id:'t1', name:'X', start:'2025-01-04', end:'2025-01-05' }]; // Sat..Sun
+    normalizeTasks();
+    assert(tasks[0].start === '2025-01-06', 'normalizeTasks start weekend -> Mon');
+    assert(tasks[0].end === '2025-01-06', 'normalizeTasks end weekend -> Fri then clamped to start');
+
+    assert(clampLeftWidth(100) >= 420, 'clampLeftWidth min');
+    assert(clampLeftWidth(999999) <= Math.floor(window.innerWidth * 0.75), 'clampLeftWidth max');
+
+    console.log('All tests passed');
+    console.groupEnd();
+  })();
+})();
+</script>
+</body>
+</html>
