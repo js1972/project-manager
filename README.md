@@ -12,7 +12,8 @@ A single-file HTML app for managing projects with an interactive Gantt chart. Al
 - Search filter with compact view.
 - Local persistence via `localStorage`.
 - Export to a portable HTML file (Share button).
-- Export tasks to CSV.
+- Export tasks to CSV (includes project title in `projectTitle`).
+- Import tasks from CSV (overwrites after confirmation).
 
 ## Usage
 1. Open `project_single_file_gantt_spa.html` in a browser.
@@ -20,6 +21,7 @@ A single-file HTML app for managing projects with an interactive Gantt chart. Al
 3. Edit dates directly in the Start/End fields or drag bars to move/resize.
 4. Use the dependency dropdown to link tasks, and the zoom controls to change scale.
 5. Click **Share** to download a self-contained HTML file you can email.
+6. Use the menu to import or export CSV task data.
 
 ## Notes
 - Dates are normalized to business days (Mon–Fri).

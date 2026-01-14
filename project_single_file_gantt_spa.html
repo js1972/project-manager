@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Project name — Gantt</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
   <style>
     html, body { height: 100%; }
     :root {
@@ -111,9 +110,11 @@
             <button id="menuBtn" class="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-200 hover:bg-gray-300 shadow" aria-label="Menu">⋮</button>
             <div id="menu" class="hidden absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg ring-1 ring-black/5 z-50">
               <button id="loadSample" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Load sample project</button>
+              <button id="importCsv" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Import CSV</button>
               <button id="exportCsv" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Export CSV</button>
               <button id="clearData" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">Clear all data…</button>
             </div>
+            <input id="importCsvInput" type="file" accept=".csv,text/csv" class="hidden" />
           </div>
         </div>
       </div>
@@ -209,6 +210,8 @@
     menu: document.getElementById('menu'),
     clearData: document.getElementById('clearData'),
     loadSample: document.getElementById('loadSample'),
+    importCsv: document.getElementById('importCsv'),
+    importCsvInput: document.getElementById('importCsvInput'),
     exportCsv: document.getElementById('exportCsv'),
     splitter: document.getElementById('splitter'),
   };
@@ -722,23 +725,6 @@
       document.title = meta.title + ' — Gantt';
     }
 
-    // Shared link takes precedence
-    if (location.hash.startsWith('#share=')) {
-      try {
-        const enc = decodeURIComponent(location.hash.slice(7));
-        const json = LZString.decompressFromEncodedURIComponent(enc);
-        const data = JSON.parse(json);
-        if (!Array.isArray(data)) throw new Error('Invalid shared payload');
-        tasks = data;
-        normalizeTasks();
-        applyDependencies();
-        save();
-        return;
-      } catch (e) {
-        console.warn('Failed to parse shared link', e);
-      }
-    }
-
     // Local storage
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -789,8 +775,147 @@
     return s;
   }
 
+  function normalizeHeaderKey(key) {
+    return String(key || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    const s = String(text || '');
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (s[i + 1] === '"') {
+            field += '"';
+            i++;
+          } else {
+            inQuotes = false;
+          }
+        } else {
+          field += ch;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        row.push(field);
+        field = '';
+      } else if (ch === '\n') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+      } else if (ch === '\r') {
+        row.push(field);
+        rows.push(row);
+        row = [];
+        field = '';
+        if (s[i + 1] === '\n') i++;
+      } else {
+        field += ch;
+      }
+    }
+    row.push(field);
+    rows.push(row);
+    while (rows.length && rows[rows.length - 1].every(cell => String(cell) === '')) {
+      rows.pop();
+    }
+    return rows;
+  }
+
+  function importCsv(text) {
+    const rows = parseCsv(text);
+    if (!rows.length) {
+      alert('CSV is empty.');
+      return;
+    }
+    const headerRow = rows[0].map(normalizeHeaderKey);
+    const hasHeader = headerRow.includes('name') && headerRow.includes('start');
+    let map = null;
+    let startIdx = 0;
+    if (hasHeader) {
+      const findIndex = (key) => headerRow.indexOf(key);
+      map = {
+        id: findIndex('id'),
+        name: findIndex('name'),
+        start: findIndex('start'),
+        end: findIndex('end'),
+        milestone: findIndex('milestone'),
+        dependsOnId: findIndex('dependsonid'),
+        color: findIndex('color'),
+        projectTitle: findIndex('projecttitle'),
+      };
+      startIdx = 1;
+    } else {
+      map = { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, projectTitle: 7 };
+    }
+
+    const imported = [];
+    let importedTitle = '';
+    for (let i = startIdx; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || row.every(cell => String(cell || '').trim() === '')) continue;
+      const val = (key) => {
+        const idx = map[key];
+        if (idx === undefined || idx < 0) return '';
+        return row[idx] ?? '';
+      };
+      const idRaw = String(val('id')).trim();
+      const nameRaw = String(val('name')).trim();
+      const startRaw = String(val('start')).trim();
+      const endRaw = String(val('end')).trim();
+      const milestoneRaw = String(val('milestone')).trim().toLowerCase();
+      const dependsRaw = String(val('dependsOnId')).trim();
+      const colorRaw = String(val('color')).trim();
+      const titleRaw = String(val('projectTitle')).trim();
+      const isMilestone = milestoneRaw === 'true' || milestoneRaw === '1' || milestoneRaw === 'yes';
+
+      const task = {
+        id: idRaw || uid(),
+        name: nameRaw || 'Untitled task',
+        start: startRaw,
+      };
+      if (isMilestone) {
+        task.milestone = true;
+      } else if (endRaw) {
+        task.end = endRaw;
+      }
+      if (dependsRaw) task.dependsOnId = dependsRaw;
+      if (colorRaw) task.color = colorRaw;
+      imported.push(task);
+      if (!importedTitle && titleRaw) importedTitle = titleRaw;
+    }
+
+    if (!imported.length) {
+      alert('No tasks found in CSV.');
+      return;
+    }
+    if (!confirm('Importing CSV will overwrite the current project. Continue?')) return;
+
+    const title = importedTitle || 'Project name';
+    if (els.projectTitle) {
+      els.projectTitle.value = title;
+      document.title = title + ' — Gantt';
+      saveMeta({ title });
+    }
+    resetSearch();
+    tasks = imported;
+    normalizeTasks();
+    applyDependencies();
+    save();
+    render();
+    commitHistory();
+  }
+
   function exportCsv() {
-    const header = ['id','name','start','end','milestone','dependsOnId','color'];
+    const title = els.projectTitle ? els.projectTitle.value.trim() : '';
+    const titleValue = title || 'Project name';
+    const header = ['id','name','start','end','milestone','dependsOnId','color','projectTitle'];
     const rows = [header];
     tasks.forEach(t => {
       rows.push([
@@ -801,13 +926,13 @@
         t.milestone ? 'true' : 'false',
         t.dependsOnId || '',
         t.color || '',
+        titleValue,
       ]);
     });
     const csv = rows.map(row => row.map(csvEscape).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const title = els.projectTitle ? els.projectTitle.value.trim() : '';
     const stamp = toISO(todayUTC());
     const base = slugifyFileName(title || 'gantt-project');
     a.href = url;
@@ -1630,6 +1755,25 @@
     render();
     commitHistory();
   });
+  els.importCsv.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    els.menu.classList.add('hidden');
+    if (els.importCsvInput) {
+      els.importCsvInput.value = '';
+      els.importCsvInput.click();
+    }
+  });
+  if (els.importCsvInput) {
+    els.importCsvInput.addEventListener('change', (e)=>{
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => importCsv(reader.result);
+      reader.onerror = () => alert('Failed to read CSV file.');
+      reader.readAsText(file);
+    });
+  }
   els.exportCsv.addEventListener('click', (e)=>{
     e.preventDefault();
     e.stopPropagation();
