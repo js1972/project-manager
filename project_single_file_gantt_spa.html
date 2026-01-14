@@ -44,6 +44,26 @@
     /* Drag ghost */
     .dragging { opacity: 0.92; outline: 2px solid rgba(79,70,229,0.35); outline-offset: 2px; }
 
+    /* Critical path */
+    .bar.critical-bar { box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.75), 0 8px 18px rgba(244, 63, 94, 0.25); }
+    .milestone.critical-milestone { box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.75), 0 8px 16px rgba(244, 63, 94, 0.25); }
+    .critical-row .task-row-grid { box-shadow: inset 3px 0 0 rgba(244, 63, 94, 0.9); background: rgba(244, 63, 94, 0.04); }
+    .non-critical { opacity: 0.6; filter: saturate(0.7); }
+
+    /* Dependency link handle */
+    .link-handle { position:absolute; width: 12px; height: 12px; border-radius: 999px; background: #ffffff; border: 2px solid #64748b; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18); cursor: crosshair; opacity: 0; transition: opacity 120ms ease; }
+    .bar:hover .link-handle, .milestone-wrap:hover .link-handle { opacity: 1; }
+    .bar .link-handle { right: -10px; top: 50%; transform: translate(50%, -50%); }
+    .milestone-wrap { position:absolute; width:14px; height:14px; overflow: visible; }
+    .milestone-wrap .link-handle { right: -10px; top: 50%; transform: translate(50%, -50%); }
+    .link-target .task-row-grid { outline: 2px dashed rgba(245, 158, 11, 0.8); outline-offset: -2px; }
+    body.linking { cursor: crosshair; }
+
+    /* Notes */
+    .note-btn { width: 20px; height: 20px; border-radius: 6px; font-size: 10px; font-weight: 700; color: rgba(0,0,0,0.45); background: rgba(0,0,0,0.04); display:flex; align-items:center; justify-content:center; }
+    .note-btn:hover { background: rgba(0,0,0,0.08); color: rgba(15,23,42,0.9); }
+    .note-btn.has-notes { color: #0f172a; background: rgba(16, 185, 129, 0.18); }
+
     /* Resizable splitter */
     .splitter {
       width: 8px;
@@ -99,11 +119,13 @@
           <button id="undoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow">Undo</button>
           <button id="redoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow">Redo</button>
           <button id="share" class="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow">Share</button>
+          <button id="notesBtn" class="h-10 px-3 rounded-xl bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 shadow">Notes</button>
           <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 shadow">
             <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="day">Day</button>
             <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="week">Week</button>
             <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="month">Month</button>
           </div>
+          <button id="criticalToggle" class="h-10 px-3 rounded-xl bg-gray-200 text-gray-700 hover:bg-gray-300 shadow" aria-pressed="false">Critical Path</button>
           <button id="today" class="h-10 px-3 rounded-xl bg-rose-600 text-white hover:bg-rose-700 shadow">Today</button>
           <button id="centerToday" class="h-10 px-3 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 shadow">Center Today</button>
           <div class="relative">
@@ -120,6 +142,7 @@
       </div>
       <div class="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
         <div><span class="font-medium text-gray-600">Drag:</span> cursor-locked</div>
+        <div><span class="font-medium text-gray-600">Link:</span> drag dot to connect</div>
         <div><span class="font-medium text-gray-600">Snap:</span> Shift = 5 days, Ctrl/Cmd = weeks</div>
         <div><span class="font-medium text-gray-600">Limit:</span> can’t plan earlier than today − 1 month</div>
       </div>
@@ -165,6 +188,30 @@
     <footer class="mt-3 text-xs text-gray-500">Data persists locally; use Share to download a portable HTML file you can email. All times are UTC-based for consistency.</footer>
   </div>
 
+  <div id="drawerOverlay" class="hidden fixed inset-0 bg-black/30 z-40"></div>
+  <aside id="drawer" class="fixed right-0 top-0 h-full w-full max-w-sm bg-white shadow-2xl border-l border-gray-200 transform translate-x-full transition-transform duration-200 z-50">
+    <div class="h-full flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between">
+        <div class="text-sm font-semibold text-gray-900" id="drawerTitle">Notes</div>
+        <button id="drawerClose" class="text-xs font-semibold text-gray-500 hover:text-gray-700">Close</button>
+      </div>
+      <div class="p-4 space-y-4 overflow-y-auto">
+        <div id="projectNotesSection" class="space-y-2">
+          <div class="text-xs font-semibold text-gray-600">Project notes</div>
+          <textarea id="projectNotesInput" class="w-full h-40 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Project context, goals, risks, decisions..."></textarea>
+        </div>
+        <div id="taskNotesSection" class="space-y-2 hidden">
+          <div class="space-y-1">
+            <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Task</div>
+            <div id="drawerTaskName" class="text-sm font-semibold text-gray-900"></div>
+            <div id="drawerTaskDates" class="text-xs text-gray-500"></div>
+          </div>
+          <textarea id="taskNotesInput" class="w-full h-48 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Task notes, blockers, context..."></textarea>
+        </div>
+      </div>
+    </div>
+  </aside>
+
   <script id="embeddedData" type="application/json"></script>
 
 <script>
@@ -185,12 +232,16 @@
   const UI_KEY = 'bdc-fre-gantt-ui-v1';
   const EMBEDDED_DATA_ID = 'embeddedData';
 
-  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string,dependsOnId?:string}} Task */
+  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string,dependsOnId?:string,notes?:string}} Task */
   /** @type {Task[]} */
   let tasks = [];
   let filteredIds = new Set();
+  let showCriticalPath = false;
+  let projectNotes = '';
 
   let dragCtx = null;
+  let linkCtx = null;
+  const drawerState = { open: false, mode: 'project', taskId: null };
 
   const els = {
     projectTitle: document.getElementById('projectTitle'),
@@ -200,6 +251,8 @@
     undoBtn: document.getElementById('undoBtn'),
     redoBtn: document.getElementById('redoBtn'),
     share: document.getElementById('share'),
+    notesBtn: document.getElementById('notesBtn'),
+    criticalToggle: document.getElementById('criticalToggle'),
     scale: document.getElementById('scale'),
     left: document.getElementById('taskList'),
     grid: document.getElementById('ganttGrid'),
@@ -214,6 +267,16 @@
     importCsvInput: document.getElementById('importCsvInput'),
     exportCsv: document.getElementById('exportCsv'),
     splitter: document.getElementById('splitter'),
+    drawer: document.getElementById('drawer'),
+    drawerOverlay: document.getElementById('drawerOverlay'),
+    drawerTitle: document.getElementById('drawerTitle'),
+    drawerClose: document.getElementById('drawerClose'),
+    projectNotesInput: document.getElementById('projectNotesInput'),
+    taskNotesInput: document.getElementById('taskNotesInput'),
+    projectNotesSection: document.getElementById('projectNotesSection'),
+    taskNotesSection: document.getElementById('taskNotesSection'),
+    drawerTaskName: document.getElementById('drawerTaskName'),
+    drawerTaskDates: document.getElementById('drawerTaskDates'),
   };
   const zoomButtons = Array.from(document.querySelectorAll('.zoom-btn'));
 
@@ -305,6 +368,7 @@
   const DEFAULT_TASK_COLOR = '#4f46e5';
   const DEFAULT_MILESTONE_COLOR = '#9333ea';
   const DEP_LINE_COLOR = '#94a3b8';
+  const LINK_LINE_COLOR = '#f59e0b';
 
   function escapeHtml(s) {
     return String(s)
@@ -336,7 +400,10 @@
   }
 
   function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
-  function saveMeta(meta) { localStorage.setItem(META_KEY, JSON.stringify(meta)); }
+  function saveMeta(meta) {
+    const prev = loadMeta() || {};
+    localStorage.setItem(META_KEY, JSON.stringify({ ...prev, ...meta }));
+  }
   function loadMeta() {
     const raw = localStorage.getItem(META_KEY);
     if (!raw) return null;
@@ -363,18 +430,20 @@
 
   function snapshotState() {
     const title = els.projectTitle ? els.projectTitle.value.trim() || 'Project name' : 'Project name';
-    return { tasks: cloneTasksSnapshot(), title };
+    return { tasks: cloneTasksSnapshot(), title, notes: projectNotes };
   }
 
   function applySnapshot(snapshot) {
     tasks = snapshot.tasks || [];
+    projectNotes = snapshot.notes || '';
     if (els.projectTitle) {
       els.projectTitle.value = snapshot.title || 'Project name';
       document.title = (snapshot.title || 'Project name') + ' — Gantt';
-      saveMeta({ title: snapshot.title || 'Project name' });
+      saveMeta({ title: snapshot.title || 'Project name', notes: projectNotes });
     }
     save();
     render();
+    updateDrawerContent();
   }
 
   function updateHistoryButtons() {
@@ -450,6 +519,18 @@
     });
   }
 
+  function updateCriticalToggle() {
+    if (!els.criticalToggle) return;
+    const active = showCriticalPath;
+    els.criticalToggle.setAttribute('aria-pressed', active ? 'true' : 'false');
+    els.criticalToggle.classList.toggle('bg-rose-100', active);
+    els.criticalToggle.classList.toggle('text-rose-700', active);
+    els.criticalToggle.classList.toggle('hover:bg-rose-200', active);
+    els.criticalToggle.classList.toggle('bg-gray-200', !active);
+    els.criticalToggle.classList.toggle('text-gray-700', !active);
+    els.criticalToggle.classList.toggle('hover:bg-gray-300', !active);
+  }
+
   function setZoom(key, persist=false) {
     if (!ZOOM_LEVELS[key]) return;
     zoomKey = key;
@@ -479,6 +560,7 @@
       if (typeof out.id !== 'string' || !out.id) out.id = uid();
       if (typeof out.name !== 'string') out.name = 'Untitled task';
       if (out.dependsOnId && typeof out.dependsOnId !== 'string') delete out.dependsOnId;
+      if (out.notes != null && typeof out.notes !== 'string') out.notes = String(out.notes);
       const startRaw = toDateSafe(out.start);
       const endRaw = toDateSafe(out.end);
       const baseStart = startRaw || endRaw || todayUTC();
@@ -602,6 +684,63 @@
     return warnings;
   }
 
+  function taskDurationBiz(t) {
+    if (t.milestone) return 0;
+    const s = toDate(t.start);
+    const e = toDate(t.end || t.start);
+    return Math.max(1, businessDaysInclusive(s, e));
+  }
+
+  function computeCriticalPathIds() {
+    const byId = new Map(tasks.map(t => [t.id, t]));
+    const memo = new Map();
+    const visiting = new Set();
+
+    function dfs(id) {
+      if (memo.has(id)) return memo.get(id);
+      const t = byId.get(id);
+      if (!t) return { len: 0, pred: null };
+      if (visiting.has(id)) {
+        const info = { len: taskDurationBiz(t), pred: null };
+        memo.set(id, info);
+        return info;
+      }
+      visiting.add(id);
+      let pred = null;
+      let len = taskDurationBiz(t);
+      if (t.dependsOnId && byId.has(t.dependsOnId)) {
+        const prev = dfs(t.dependsOnId);
+        pred = t.dependsOnId;
+        len = prev.len + taskDurationBiz(t);
+      }
+      visiting.delete(id);
+      const info = { len, pred };
+      memo.set(id, info);
+      return info;
+    }
+
+    let maxId = null;
+    let maxLen = -1;
+    tasks.forEach(t => {
+      const info = dfs(t.id);
+      if (info.len > maxLen) {
+        maxLen = info.len;
+        maxId = t.id;
+      }
+    });
+
+    const critical = new Set();
+    let cur = maxId;
+    const seen = new Set();
+    while (cur && !seen.has(cur)) {
+      critical.add(cur);
+      seen.add(cur);
+      const info = memo.get(cur);
+      cur = info ? info.pred : null;
+    }
+    return critical;
+  }
+
   function loadEmbeddedPayload() {
     const el = document.getElementById(EMBEDDED_DATA_ID);
     if (!el) return null;
@@ -619,10 +758,16 @@
     const embeddedTitle = payload.meta && typeof payload.meta.title === 'string'
       ? payload.meta.title.trim()
       : '';
+    const embeddedNotes = payload.meta && typeof payload.meta.notes === 'string'
+      ? payload.meta.notes
+      : '';
     if (embeddedTitle && els.projectTitle) {
       els.projectTitle.value = embeddedTitle;
       document.title = embeddedTitle + ' — Gantt';
-      saveMeta({ title: embeddedTitle });
+    }
+    projectNotes = embeddedNotes;
+    if (embeddedTitle || embeddedNotes) {
+      saveMeta({ title: embeddedTitle || (els.projectTitle ? els.projectTitle.value.trim() : 'Project name'), notes: projectNotes });
     }
     save();
     return true;
@@ -642,6 +787,78 @@
     if (!embedded) return null;
     embedded.textContent = json;
     return '<!DOCTYPE html>\n' + cloned.outerHTML;
+  }
+
+  function formatTaskDates(t) {
+    if (!t) return '';
+    if (t.milestone) return `Milestone - ${t.start}`;
+    const end = t.end || t.start;
+    return `${t.start} -> ${end}`;
+  }
+
+  function updateDrawerContent() {
+    if (!els.drawer) return;
+    if (drawerState.mode === 'project') {
+      if (els.projectNotesSection) els.projectNotesSection.classList.remove('hidden');
+      if (els.taskNotesSection) els.taskNotesSection.classList.add('hidden');
+      if (els.drawerTitle) els.drawerTitle.textContent = 'Project Notes';
+      if (els.projectNotesInput) els.projectNotesInput.value = projectNotes || '';
+      return;
+    }
+
+    const t = getTaskById(drawerState.taskId);
+    if (!t) {
+      closeDrawer();
+      return;
+    }
+    if (els.projectNotesSection) els.projectNotesSection.classList.add('hidden');
+    if (els.taskNotesSection) els.taskNotesSection.classList.remove('hidden');
+    if (els.drawerTitle) els.drawerTitle.textContent = 'Task Notes';
+    if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
+    if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
+    if (els.taskNotesInput) els.taskNotesInput.value = t.notes || '';
+  }
+
+  function updateDrawerTaskMeta(t) {
+    if (!drawerState.open || drawerState.mode !== 'task' || drawerState.taskId !== t.id) return;
+    if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
+    if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
+  }
+
+  function openDrawer(mode, taskId) {
+    drawerState.open = true;
+    drawerState.mode = mode;
+    drawerState.taskId = taskId || null;
+    updateDrawerContent();
+    if (els.drawerOverlay) els.drawerOverlay.classList.remove('hidden');
+    if (els.drawer) {
+      els.drawer.classList.remove('translate-x-full');
+      els.drawer.classList.add('translate-x-0');
+    }
+    requestAnimationFrame(() => {
+      const focusEl = mode === 'project' ? els.projectNotesInput : els.taskNotesInput;
+      if (focusEl) focusEl.focus();
+    });
+  }
+
+  function closeDrawer() {
+    drawerState.open = false;
+    drawerState.taskId = null;
+    if (els.drawerOverlay) els.drawerOverlay.classList.add('hidden');
+    if (els.drawer) {
+      els.drawer.classList.add('translate-x-full');
+      els.drawer.classList.remove('translate-x-0');
+    }
+  }
+
+  function updateTaskNoteBadge(taskId) {
+    const li = document.querySelector(`#taskList li[data-task-id="${taskId}"]`);
+    if (!li) return;
+    const btn = li.querySelector('.note-btn');
+    if (!btn) return;
+    const t = getTaskById(taskId);
+    const hasNotes = t && typeof t.notes === 'string' && t.notes.trim().length > 0;
+    btn.classList.toggle('has-notes', hasNotes);
   }
 
   function updateDependencyLabels(t) {
@@ -724,6 +941,7 @@
       els.projectTitle.value = meta.title;
       document.title = meta.title + ' — Gantt';
     }
+    projectNotes = meta && typeof meta.notes === 'string' ? meta.notes : '';
 
     // Local storage
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -749,7 +967,7 @@
     const title = els.projectTitle ? els.projectTitle.value.trim() : '';
     const payload = {
       tasks,
-      meta: { title: title || 'Project name' },
+      meta: { title: title || 'Project name', notes: projectNotes || '' },
     };
     const html = buildPortableHtml(payload);
     if (!html) {
@@ -840,6 +1058,10 @@
     let startIdx = 0;
     if (hasHeader) {
       const findIndex = (key) => headerRow.indexOf(key);
+      const notesIndex = (() => {
+        const idx = findIndex('notes');
+        return idx !== -1 ? idx : findIndex('tasknotes');
+      })();
       map = {
         id: findIndex('id'),
         name: findIndex('name'),
@@ -849,14 +1071,17 @@
         dependsOnId: findIndex('dependsonid'),
         color: findIndex('color'),
         projectTitle: findIndex('projecttitle'),
+        notes: notesIndex,
+        projectNotes: findIndex('projectnotes'),
       };
       startIdx = 1;
     } else {
-      map = { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, projectTitle: 7 };
+      map = { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, projectTitle: 7, notes: 8, projectNotes: 9 };
     }
 
     const imported = [];
     let importedTitle = '';
+    let importedProjectNotes = '';
     for (let i = startIdx; i < rows.length; i++) {
       const row = rows[i];
       if (!row || row.every(cell => String(cell || '').trim() === '')) continue;
@@ -873,6 +1098,8 @@
       const dependsRaw = String(val('dependsOnId')).trim();
       const colorRaw = String(val('color')).trim();
       const titleRaw = String(val('projectTitle')).trim();
+      const notesRaw = String(val('notes')).trim();
+      const projectNotesRaw = String(val('projectNotes')).trim();
       const isMilestone = milestoneRaw === 'true' || milestoneRaw === '1' || milestoneRaw === 'yes';
 
       const task = {
@@ -880,6 +1107,7 @@
         name: nameRaw || 'Untitled task',
         start: startRaw,
       };
+      if (notesRaw) task.notes = notesRaw;
       if (isMilestone) {
         task.milestone = true;
       } else if (endRaw) {
@@ -889,6 +1117,7 @@
       if (colorRaw) task.color = colorRaw;
       imported.push(task);
       if (!importedTitle && titleRaw) importedTitle = titleRaw;
+      if (!importedProjectNotes && projectNotesRaw) importedProjectNotes = projectNotesRaw;
     }
 
     if (!imported.length) {
@@ -898,24 +1127,27 @@
     if (!confirm('Importing CSV will overwrite the current project. Continue?')) return;
 
     const title = importedTitle || 'Project name';
+    projectNotes = importedProjectNotes || '';
     if (els.projectTitle) {
       els.projectTitle.value = title;
       document.title = title + ' — Gantt';
-      saveMeta({ title });
+      saveMeta({ title, notes: projectNotes });
     }
+    if (els.projectNotesInput) els.projectNotesInput.value = projectNotes || '';
     resetSearch();
     tasks = imported;
     normalizeTasks();
     applyDependencies();
     save();
     render();
+    updateDrawerContent();
     commitHistory();
   }
 
   function exportCsv() {
     const title = els.projectTitle ? els.projectTitle.value.trim() : '';
     const titleValue = title || 'Project name';
-    const header = ['id','name','start','end','milestone','dependsOnId','color','projectTitle'];
+    const header = ['id','name','start','end','milestone','dependsOnId','color','projectTitle','notes','projectNotes'];
     const rows = [header];
     tasks.forEach(t => {
       rows.push([
@@ -927,6 +1159,8 @@
         t.dependsOnId || '',
         t.color || '',
         titleValue,
+        t.notes || '',
+        projectNotes || '',
       ]);
     });
     const csv = rows.map(row => row.map(csvEscape).join(',')).join('\n');
@@ -1063,12 +1297,109 @@
     return hasLines ? svg : null;
   }
 
+  function highlightLinkTarget(targetId) {
+    document.querySelectorAll('#taskList li.link-target').forEach(el => el.classList.remove('link-target'));
+    if (!targetId) return;
+    const li = document.querySelector(`#taskList li[data-task-id="${targetId}"]`);
+    if (li) li.classList.add('link-target');
+  }
+
+  function wouldCreateCycle(predId, taskId) {
+    let cur = predId;
+    while (cur) {
+      if (cur === taskId) return true;
+      const t = getTaskById(cur);
+      cur = t && t.dependsOnId ? t.dependsOnId : null;
+    }
+    return false;
+  }
+
+  function startLinkDrag(ev, sourceId, originEl) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (linkCtx) return;
+    if (!els.grid) return;
+
+    const gridRect = els.grid.getBoundingClientRect();
+    const originRect = originEl.getBoundingClientRect();
+    const startX = originRect.left - gridRect.left + (originRect.width / 2);
+    const startY = originRect.top - gridRect.top + (originRect.height / 2);
+
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('width', String(els.grid.offsetWidth));
+    svg.setAttribute('height', String(els.grid.offsetHeight));
+    svg.classList.add('absolute');
+    svg.style.left = '0px';
+    svg.style.top = '0px';
+    svg.style.pointerEvents = 'none';
+
+    const line = document.createElementNS(ns, 'line');
+    line.setAttribute('x1', String(startX));
+    line.setAttribute('y1', String(startY));
+    line.setAttribute('x2', String(startX));
+    line.setAttribute('y2', String(startY));
+    line.setAttribute('stroke', LINK_LINE_COLOR);
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-dasharray', '5 4');
+    svg.appendChild(line);
+    els.grid.appendChild(svg);
+
+    linkCtx = { sourceId, startX, startY, svg, line, targetId: null };
+    document.body.classList.add('linking');
+    window.addEventListener('mousemove', onLinkMove);
+    window.addEventListener('mouseup', endLinkDrag, { once: true });
+  }
+
+  function onLinkMove(ev) {
+    if (!linkCtx || !els.grid) return;
+    autoScrollIfNearEdge(ev);
+    const gridRect = els.grid.getBoundingClientRect();
+    const x = ev.clientX - gridRect.left;
+    const y = ev.clientY - gridRect.top;
+    linkCtx.line.setAttribute('x2', String(x));
+    linkCtx.line.setAttribute('y2', String(y));
+
+    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    const target = el ? el.closest('[data-task-id]') : null;
+    const targetId = target ? target.dataset.taskId : null;
+    linkCtx.targetId = targetId && targetId !== linkCtx.sourceId ? targetId : null;
+    highlightLinkTarget(linkCtx.targetId);
+  }
+
+  function endLinkDrag() {
+    if (!linkCtx) return;
+    const { sourceId, targetId } = linkCtx;
+    if (linkCtx.svg && linkCtx.svg.parentNode) linkCtx.svg.remove();
+    document.body.classList.remove('linking');
+    window.removeEventListener('mousemove', onLinkMove);
+    highlightLinkTarget(null);
+
+    if (targetId && targetId !== sourceId) {
+      if (wouldCreateCycle(sourceId, targetId)) {
+        alert('That link would create a dependency cycle.');
+      } else {
+        const targetTask = getTaskById(targetId);
+        if (targetTask) {
+          targetTask.dependsOnId = sourceId;
+          applyDependencies();
+          save();
+          render();
+          updateDrawerContent();
+          commitHistory();
+        }
+      }
+    }
+    linkCtx = null;
+  }
+
   function render() {
     const q = els.search.value.trim().toLowerCase();
     const visibleTasks = tasks.filter(t => t.name.toLowerCase().includes(q));
     const visibleIds = new Set(visibleTasks.map(t => t.id));
     const taskIndexById = new Map(tasks.map((t, i) => [t.id, i]));
     const depWarnings = computeDependencyWarnings(taskIndexById);
+    const criticalIds = showCriticalPath ? computeCriticalPathIds() : new Set();
     filteredIds = visibleIds;
 
     const {minD, maxD} = bounds();
@@ -1105,6 +1436,8 @@
       li.className = `group ${visible ? '' : 'hidden'}`;
       li.draggable = true;
       li.dataset.id = t.id;
+      li.dataset.taskId = t.id;
+      if (showCriticalPath && criticalIds.has(t.id)) li.classList.add('critical-row');
 
       const s = toDate(t.start);
       const e = t.milestone ? s : toDate(t.end || t.start);
@@ -1149,7 +1482,10 @@
             <button type="button" class="swatch-btn" title="Change color" aria-label="Change color" draggable="false">
               <span class="swatch" style="background:${curColor}"></span>
             </button>
-            <input class="min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
+            <div class="flex items-center gap-2 min-w-0">
+              <input class="flex-1 min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
+              <button type="button" class="note-btn ${t.notes && t.notes.trim() ? 'has-notes' : ''}" title="Task notes" aria-label="Task notes" data-task-notes="true" draggable="false">N</button>
+            </div>
             <div class="col-dep flex items-center gap-1">
               <select class="flex-1 text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-deps="true" aria-label="Depends on">${depOptionsHTML}</select>
               ${depWarnHTML}
@@ -1165,13 +1501,14 @@
           </div>
         </div>`;
 
-      const nameInput = li.querySelector('input');
+      const nameInput = li.querySelector('.task-name');
       nameInput.value = t.name;
       nameInput.addEventListener('input', (e)=>{
         t.name = e.target.value;
         save();
         updateTaskNameInGantt(t);
         updateDependencyLabels(t);
+        updateDrawerTaskMeta(t);
       });
       nameInput.addEventListener('blur', ()=> {
         if (els.search.value.trim()) render();
@@ -1183,11 +1520,21 @@
           nameInput.blur();
         }
       });
+      const noteBtn = li.querySelector('button[data-task-notes]');
+      if (noteBtn) {
+        noteBtn.addEventListener('mousedown', (e)=> e.stopPropagation());
+        noteBtn.addEventListener('dragstart', (e)=> e.preventDefault());
+        noteBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          openDrawer('task', t.id);
+        });
+      }
       const startInput = li.querySelector('input[data-start]');
       startInput.addEventListener('change', ()=>{
         if (!applyStartInput(t, startInput.value)) return;
         applyDependencies();
         save();
+        updateDrawerTaskMeta(t);
         render();
         commitHistory();
       });
@@ -1195,6 +1542,7 @@
         if (!applyStartInput(t, startInput.value)) return;
         applyDependencies();
         save();
+        updateDrawerTaskMeta(t);
         render();
         commitHistory();
       });
@@ -1210,6 +1558,7 @@
           if (!applyEndInput(t, endInput.value)) return;
           applyDependencies();
           save();
+          updateDrawerTaskMeta(t);
           render();
           commitHistory();
         });
@@ -1217,6 +1566,7 @@
           if (!applyEndInput(t, endInput.value)) return;
           applyDependencies();
           save();
+          updateDrawerTaskMeta(t);
           render();
           commitHistory();
         });
@@ -1232,6 +1582,7 @@
         applyDependencies();
         save();
         render();
+        updateDrawerContent();
         commitHistory();
       });
       const depSelect = li.querySelector('select[data-deps]');
@@ -1240,6 +1591,7 @@
         applyDependencies();
         save();
         render();
+        updateDrawerContent();
         commitHistory();
       });
 
@@ -1349,15 +1701,34 @@
       const w = t.milestone ? 0 : Math.max(dayW, (daysBetween(s, addDays(e,1)) * dayW));
 
       if (t.milestone) {
+        const msWrap = document.createElement('div');
+        msWrap.className = 'milestone-wrap';
+        msWrap.style.left = (x - 7) + 'px';
+        msWrap.style.top = (yBase + (ROW_H - 14)/2) + 'px';
+        msWrap.dataset.taskId = t.id;
+
         const ms = document.createElement('div');
         ms.className = 'milestone';
-        ms.style.left = (x - 7) + 'px';
-        ms.style.top = (yBase + (ROW_H - 14)/2) + 'px';
+        ms.style.left = '0px';
+        ms.style.top = '0px';
         ms.style.background = t.color || DEFAULT_MILESTONE_COLOR;
         ms.title = `${t.name} — ${t.start}`;
         ms.dataset.id = t.id;
-        ms.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'ms-move', ms, minD));
-        els.grid.appendChild(ms);
+        ms.dataset.taskId = t.id;
+        if (showCriticalPath) {
+          if (criticalIds.has(t.id)) ms.classList.add('critical-milestone');
+          else ms.classList.add('non-critical');
+        }
+
+        const linkHandle = document.createElement('div');
+        linkHandle.className = 'link-handle';
+        linkHandle.title = 'Drag to link dependency';
+        linkHandle.addEventListener('mousedown', (ev)=> startLinkDrag(ev, t.id, linkHandle));
+
+        msWrap.appendChild(ms);
+        msWrap.appendChild(linkHandle);
+        ms.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'ms-move', msWrap, minD));
+        els.grid.appendChild(msWrap);
       } else {
         const bar = document.createElement('div');
         bar.className = 'bar rounded-md shadow';
@@ -1367,7 +1738,12 @@
         bar.style.width = w + 'px';
         const bg = t.color || DEFAULT_TASK_COLOR;
         bar.style.background = bg;
-        bar.title = `${t.name} — ${t.start} → ${t.end}`;
+        bar.title = `${t.name} — ${t.start} → ${t.end || t.start}`;
+        bar.dataset.taskId = t.id;
+        if (showCriticalPath) {
+          if (criticalIds.has(t.id)) bar.classList.add('critical-bar');
+          else bar.classList.add('non-critical');
+        }
 
         // Optional label inside the bar (only when there's room)
         const minLabelPx = 120;
@@ -1379,6 +1755,12 @@
           bar.appendChild(label);
         }
         bar.dataset.id = t.id;
+
+        const linkHandle = document.createElement('div');
+        linkHandle.className = 'link-handle';
+        linkHandle.title = 'Drag to link dependency';
+        linkHandle.addEventListener('mousedown', (ev)=> startLinkDrag(ev, t.id, linkHandle));
+        bar.appendChild(linkHandle);
 
         const hl = document.createElement('div'); hl.className='handle-l';
         const hr = document.createElement('div'); hr.className='handle-r';
@@ -1583,6 +1965,7 @@
     if (t) {
       if (dragCtx.pendingStartISO) t.start = dragCtx.pendingStartISO;
       if (!t.milestone && dragCtx.pendingEndISO) t.end = dragCtx.pendingEndISO;
+      updateDrawerTaskMeta(t);
     }
 
     dragCtx.el?.classList.remove('dragging');
@@ -1684,8 +2067,47 @@
     });
   })();
 
+  (function initCriticalToggle(){
+    const ui = loadUI();
+    if (ui && typeof ui.criticalPath === 'boolean') {
+      showCriticalPath = ui.criticalPath;
+    }
+    updateCriticalToggle();
+    els.criticalToggle?.addEventListener('click', ()=>{
+      showCriticalPath = !showCriticalPath;
+      saveUI({ criticalPath: showCriticalPath });
+      updateCriticalToggle();
+      render();
+    });
+  })();
+
   // ===== Events =====
   els.search.addEventListener('input', render);
+  els.notesBtn?.addEventListener('click', ()=> openDrawer('project'));
+  els.drawerClose?.addEventListener('click', closeDrawer);
+  els.drawerOverlay?.addEventListener('click', closeDrawer);
+
+  if (els.projectNotesInput) {
+    els.projectNotesInput.addEventListener('input', ()=>{
+      projectNotes = els.projectNotesInput.value;
+      saveMeta({ notes: projectNotes });
+    });
+    els.projectNotesInput.addEventListener('blur', ()=> {
+      commitHistory();
+    });
+  }
+  if (els.taskNotesInput) {
+    els.taskNotesInput.addEventListener('input', ()=>{
+      const t = getTaskById(drawerState.taskId);
+      if (!t) return;
+      t.notes = els.taskNotesInput.value;
+      save();
+      updateTaskNoteBadge(t.id);
+    });
+    els.taskNotesInput.addEventListener('blur', ()=> {
+      commitHistory();
+    });
+  }
 
   if (els.projectTitle) {
     els.projectTitle.addEventListener('input', () => {
@@ -1731,12 +2153,15 @@
     localStorage.removeItem(UI_KEY);
     clearShareHash();
     resetSearch();
+    projectNotes = '';
     tasks = [];
     save();
     if (els.projectTitle) {
       els.projectTitle.value = 'Project name';
       document.title = 'Project name — Gantt';
     }
+    if (els.projectNotesInput) els.projectNotesInput.value = '';
+    updateDrawerContent();
     render();
     commitHistory();
   });
@@ -1753,6 +2178,7 @@
     applyDependencies();
     save();
     render();
+    updateDrawerContent();
     commitHistory();
   });
   els.importCsv.addEventListener('click', (e)=>{
@@ -1785,6 +2211,11 @@
   els.centerTodayBtn.addEventListener('click', ()=> scrollToDate(todayUTC(), 'center'));
 
   document.addEventListener('keydown', (e)=>{
+    if (e.key === 'Escape' && drawerState.open) {
+      e.preventDefault();
+      closeDrawer();
+      return;
+    }
     const inField = e.target.closest('input, textarea, select');
     const isMod = e.ctrlKey || e.metaKey;
     if (!inField && isMod && (e.key === 'z' || e.key === 'Z')) {
