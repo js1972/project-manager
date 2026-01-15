@@ -64,6 +64,103 @@
     .note-btn:hover { background: rgba(0,0,0,0.08); color: rgba(15,23,42,0.9); }
     .note-btn.has-notes { color: #0f172a; background: rgba(16, 185, 129, 0.18); }
 
+    /* Mobile helpers */
+    .mobile-only { display: none; }
+    .mobile-menu-only { display: none; }
+    .mobile-add-btn {
+      position: fixed;
+      right: 20px;
+      bottom: 24px;
+      width: 52px;
+      height: 52px;
+      border-radius: 999px;
+      background: #4f46e5;
+      color: #ffffff;
+      font-size: 28px;
+      line-height: 1;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 16px 28px rgba(15, 23, 42, 0.2);
+      z-index: 35;
+    }
+    .mobile-add-btn:hover { background: #4338ca; }
+    .mobile-add-menu {
+      position: fixed;
+      right: 16px;
+      bottom: 88px;
+      width: 180px;
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,0.08);
+      box-shadow: 0 18px 30px rgba(15, 23, 42, 0.18);
+      z-index: 35;
+      display: none;
+      overflow: hidden;
+    }
+
+    @media (max-width: 767px) {
+      body.is-mobile .mobile-only:not(.hidden) { display: inline-flex; }
+      body.is-mobile .mobile-menu-only:not(.hidden) { display: block; }
+      body.is-mobile .mobile-hide { display: none !important; }
+
+      body.is-mobile .mobile-add-menu { display: block; }
+      body.is-mobile .mobile-add-menu.hidden { display: none; }
+
+      body.is-mobile #headerGrid,
+      body.is-mobile #mainGrid { grid-template-columns: 1fr !important; }
+      body.is-mobile #splitter,
+      body.is-mobile .splitter-header { display: none; }
+
+      body.is-mobile.mobile-view-tasks #rightPane,
+      body.is-mobile.mobile-view-tasks #headerGrid > div:nth-child(3) { display: none; }
+
+      body.is-mobile.mobile-view-timeline #leftPane,
+      body.is-mobile.mobile-view-timeline #headerGrid > div:first-child { display: none; }
+
+      body.is-mobile { --col-dep: 0px; --col-start: 0px; --col-end: 0px; --col-dur: 0px; }
+      body.is-mobile .col-dep,
+      body.is-mobile .col-start,
+      body.is-mobile .col-end,
+      body.is-mobile .col-dur { display:none; }
+
+      body.is-mobile .header-layout { flex-direction: column; align-items: stretch; }
+      body.is-mobile .header-title { width: 100%; }
+      body.is-mobile .project-title-input { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      body.is-mobile .header-controls {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas:
+          "search menu"
+          "view edit";
+        gap: 8px;
+      }
+      body.is-mobile .header-search { grid-area: search; }
+      body.is-mobile .header-menu { grid-area: menu; justify-self: end; }
+      body.is-mobile #mobileViewToggle { grid-area: view; justify-self: start; width: fit-content; max-width: 100%; }
+      body.is-mobile #mobileEditToggle { grid-area: edit; justify-self: end; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+
+      body.is-mobile #search { width: 100%; }
+      body.is-mobile .note-btn { width: 24px; height: 24px; font-size: 11px; }
+
+      body.is-mobile .bar .link-handle,
+      body.is-mobile .milestone-wrap .link-handle { width: 16px; height: 16px; }
+      body.is-mobile .handle-l,
+      body.is-mobile .handle-r { width: 16px; }
+      body.is-mobile.mobile-edit .link-handle { opacity: 1; }
+      body.is-mobile:not(.mobile-edit) .handle-l,
+      body.is-mobile:not(.mobile-edit) .handle-r { display: none; }
+      body.is-mobile:not(.mobile-edit) .link-handle { pointer-events: none; opacity: 0; }
+      body.is-mobile.mobile-edit .bar,
+      body.is-mobile.mobile-edit .milestone,
+      body.is-mobile.mobile-edit .handle-l,
+      body.is-mobile.mobile-edit .handle-r,
+      body.is-mobile.mobile-edit .link-handle { touch-action: none; }
+
+      body.is-mobile #drawer { top:auto; bottom:0; width:100%; max-width:none; height:75%; border-top-left-radius:16px; border-top-right-radius:16px; }
+      body.is-mobile #drawer.translate-x-full { transform: translateY(100%); }
+      body.is-mobile #drawer.translate-x-0 { transform: translateY(0); }
+    }
     /* Resizable splitter */
     .splitter {
       width: 8px;
@@ -107,30 +204,47 @@
 <body class="bg-gray-50 text-gray-900">
   <div class="h-screen w-full flex flex-col py-4 px-4 md:px-6">
     <header class="mb-4">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <input id="projectTitle" class="w-full text-2xl md:text-3xl font-semibold tracking-tight bg-transparent outline-none" value="Project name" />
-          <p class="text-sm text-gray-600">Interactive Gantt — reorder, drag, resize, add milestones, filter, delete. Persistent + shareable.</p>
+      <div class="header-layout flex items-center justify-between gap-3">
+        <div class="header-title min-w-0 flex-1">
+          <div class="project-title-row flex items-center gap-2 min-w-0">
+            <input id="projectTitle" class="project-title-input flex-1 min-w-0 text-2xl md:text-3xl font-semibold tracking-tight bg-transparent outline-none" value="Project name" />
+          </div>
+          <p class="text-sm text-gray-600 mobile-hide">Interactive Gantt — reorder, drag, resize, add milestones, filter, delete. Persistent + shareable.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <input id="search" type="search" placeholder="Filter…" class="h-10 px-3 rounded-xl border border-gray-300 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
-          <button id="addTask" class="h-10 px-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow">+ Task</button>
-          <button id="addMilestone" class="h-10 px-3 rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow">+ Milestone</button>
-          <button id="undoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow">Undo</button>
-          <button id="redoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow">Redo</button>
-          <button id="share" class="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow">Share</button>
-          <button id="notesBtn" class="h-10 px-3 rounded-xl bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 shadow">Notes</button>
-          <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 shadow">
+        <div class="header-controls flex flex-wrap items-center gap-2">
+          <input id="search" type="search" placeholder="Filter…" class="header-search h-10 px-3 rounded-xl border border-gray-300 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          <button id="addTask" class="h-10 px-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shadow mobile-hide">+ Task</button>
+          <button id="addMilestone" class="h-10 px-3 rounded-xl bg-purple-600 text-white hover:bg-purple-700 shadow mobile-hide">+ Milestone</button>
+          <button id="undoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow mobile-hide">Undo</button>
+          <button id="redoBtn" class="h-10 px-3 rounded-xl bg-gray-200 hover:bg-gray-300 shadow mobile-hide">Redo</button>
+          <button id="share" class="h-10 px-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 shadow mobile-hide">Share</button>
+          <button id="notesBtn" class="h-10 px-3 rounded-xl bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 shadow mobile-hide">Notes</button>
+          <div id="mobileViewToggle" class="mobile-only hidden flex items-center gap-1 bg-gray-100 rounded-xl p-1 shadow" role="group" aria-label="Mobile view">
+            <button type="button" class="mobile-view-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-mobile-view="tasks">Tasks</button>
+            <button type="button" class="mobile-view-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-mobile-view="timeline">Timeline</button>
+          </div>
+          <button id="mobileEditToggle" class="mobile-only h-10 px-3 rounded-xl bg-gray-200 text-gray-700 hover:bg-gray-300 shadow">Edit</button>
+          <div class="flex items-center gap-1 bg-gray-100 rounded-xl p-1 shadow mobile-hide">
             <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="day">Day</button>
             <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="week">Week</button>
             <button type="button" class="zoom-btn px-2 py-1 text-xs font-medium rounded-lg text-gray-600" data-zoom="month">Month</button>
           </div>
-          <button id="criticalToggle" class="h-10 px-3 rounded-xl bg-gray-200 text-gray-700 hover:bg-gray-300 shadow" aria-pressed="false">Critical Path</button>
-          <button id="today" class="h-10 px-3 rounded-xl bg-rose-600 text-white hover:bg-rose-700 shadow">Today</button>
-          <button id="centerToday" class="h-10 px-3 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 shadow">Center Today</button>
-          <div class="relative">
+          <button id="criticalToggle" class="h-10 px-3 rounded-xl bg-gray-200 text-gray-700 hover:bg-gray-300 shadow mobile-hide" aria-pressed="false">Critical Path</button>
+          <button id="today" class="h-10 px-3 rounded-xl bg-rose-600 text-white hover:bg-rose-700 shadow mobile-hide">Today</button>
+          <button id="centerToday" class="h-10 px-3 rounded-xl bg-rose-100 text-rose-700 hover:bg-rose-200 shadow mobile-hide">Center Today</button>
+          <div class="relative header-menu">
             <button id="menuBtn" class="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-200 hover:bg-gray-300 shadow" aria-label="Menu">⋮</button>
             <div id="menu" class="hidden absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg ring-1 ring-black/5 z-50">
+              <button id="menuUndo" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Undo</button>
+              <button id="menuRedo" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Redo</button>
+              <button id="menuShare" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Share</button>
+              <button id="menuNotes" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Notes</button>
+              <button id="menuCritical" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Critical Path</button>
+              <button id="menuToday" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Today</button>
+              <button id="menuCenterToday" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Center Today</button>
+              <button id="menuZoomDay" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Zoom: Day</button>
+              <button id="menuZoomWeek" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Zoom: Week</button>
+              <button id="menuZoomMonth" class="mobile-menu-only w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Zoom: Month</button>
               <button id="loadSample" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Load sample project</button>
               <button id="importCsv" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Import CSV</button>
               <button id="exportCsv" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">Export CSV</button>
@@ -140,7 +254,7 @@
           </div>
         </div>
       </div>
-      <div class="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+      <div class="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1 mobile-hide">
         <div><span class="font-medium text-gray-600">Drag:</span> cursor-locked</div>
         <div><span class="font-medium text-gray-600">Link:</span> drag dot to connect</div>
         <div><span class="font-medium text-gray-600">Snap:</span> Shift = 5 days, Ctrl/Cmd = weeks</div>
@@ -186,6 +300,11 @@
     </div>
 
     <footer class="mt-3 text-xs text-gray-500">Data persists locally; use Share to download a portable HTML file you can email. All times are UTC-based for consistency.</footer>
+    <button id="mobileAddBtn" class="mobile-only hidden mobile-add-btn" aria-label="Add task or milestone">+</button>
+    <div id="mobileAddMenu" class="mobile-add-menu hidden" role="menu" aria-label="Add item">
+      <button id="mobileAddTask" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">New Task</button>
+      <button id="mobileAddMilestone" class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100">New Milestone</button>
+    </div>
   </div>
 
   <div id="drawerOverlay" class="hidden fixed inset-0 bg-black/30 z-40"></div>
@@ -200,13 +319,31 @@
           <div class="text-xs font-semibold text-gray-600">Project notes</div>
           <textarea id="projectNotesInput" class="w-full h-40 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Project context, goals, risks, decisions..."></textarea>
         </div>
-        <div id="taskNotesSection" class="space-y-2 hidden">
+        <div id="taskNotesSection" class="space-y-4 hidden">
           <div class="space-y-1">
             <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Task</div>
             <div id="drawerTaskName" class="text-sm font-semibold text-gray-900"></div>
             <div id="drawerTaskDates" class="text-xs text-gray-500"></div>
           </div>
-          <textarea id="taskNotesInput" class="w-full h-48 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Task notes, blockers, context..."></textarea>
+          <div class="space-y-2">
+            <div class="text-xs font-semibold text-gray-600">Schedule</div>
+            <div class="grid gap-2">
+              <label class="text-xs text-gray-500" for="drawerStartInput">Start</label>
+              <input id="drawerStartInput" type="date" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              <div id="drawerEndWrap" class="space-y-1">
+                <label class="text-xs text-gray-500" for="drawerEndInput">End</label>
+                <input id="drawerEndInput" type="date" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs text-gray-500" for="drawerDepSelect">Depends on</label>
+                <select id="drawerDepSelect" class="w-full text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+              </div>
+            </div>
+          </div>
+          <div class="space-y-2">
+            <div class="text-xs font-semibold text-gray-600">Task notes</div>
+            <textarea id="taskNotesInput" class="w-full h-40 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Task notes, blockers, context..."></textarea>
+          </div>
         </div>
       </div>
     </div>
@@ -217,7 +354,9 @@
 <script>
 (() => {
   const DAY_MS = 24*60*60*1000;
-  const ROW_H = 38;
+  const ROW_H_DEFAULT = 38;
+  const ROW_H_MOBILE = 48;
+  let ROW_H = ROW_H_DEFAULT;
   const DEFAULT_DAY_W = 24;
   let dayW = DEFAULT_DAY_W;
   const ZOOM_LEVELS = {
@@ -242,6 +381,15 @@
   let dragCtx = null;
   let linkCtx = null;
   const drawerState = { open: false, mode: 'project', taskId: null };
+  let isMobile = false;
+  let mobileView = 'tasks';
+  let mobileEditMode = false;
+  const MOBILE_QUERY = window.matchMedia('(max-width: 767px)');
+  const SUPPORTS_POINTER = 'PointerEvent' in window;
+  const DRAG_START_EVENT = SUPPORTS_POINTER ? 'pointerdown' : 'mousedown';
+  const DRAG_MOVE_EVENT = SUPPORTS_POINTER ? 'pointermove' : 'mousemove';
+  const DRAG_END_EVENT = SUPPORTS_POINTER ? 'pointerup' : 'mouseup';
+  const DRAG_CANCEL_EVENT = SUPPORTS_POINTER ? 'pointercancel' : '';
 
   const els = {
     projectTitle: document.getElementById('projectTitle'),
@@ -253,6 +401,8 @@
     share: document.getElementById('share'),
     notesBtn: document.getElementById('notesBtn'),
     criticalToggle: document.getElementById('criticalToggle'),
+    mobileViewToggle: document.getElementById('mobileViewToggle'),
+    mobileEditToggle: document.getElementById('mobileEditToggle'),
     scale: document.getElementById('scale'),
     left: document.getElementById('taskList'),
     grid: document.getElementById('ganttGrid'),
@@ -261,11 +411,25 @@
     centerTodayBtn: document.getElementById('centerToday'),
     menuBtn: document.getElementById('menuBtn'),
     menu: document.getElementById('menu'),
+    menuUndo: document.getElementById('menuUndo'),
+    menuRedo: document.getElementById('menuRedo'),
+    menuShare: document.getElementById('menuShare'),
+    menuNotes: document.getElementById('menuNotes'),
+    menuCritical: document.getElementById('menuCritical'),
+    menuToday: document.getElementById('menuToday'),
+    menuCenterToday: document.getElementById('menuCenterToday'),
+    menuZoomDay: document.getElementById('menuZoomDay'),
+    menuZoomWeek: document.getElementById('menuZoomWeek'),
+    menuZoomMonth: document.getElementById('menuZoomMonth'),
     clearData: document.getElementById('clearData'),
     loadSample: document.getElementById('loadSample'),
     importCsv: document.getElementById('importCsv'),
     importCsvInput: document.getElementById('importCsvInput'),
     exportCsv: document.getElementById('exportCsv'),
+    mobileAddBtn: document.getElementById('mobileAddBtn'),
+    mobileAddMenu: document.getElementById('mobileAddMenu'),
+    mobileAddTask: document.getElementById('mobileAddTask'),
+    mobileAddMilestone: document.getElementById('mobileAddMilestone'),
     splitter: document.getElementById('splitter'),
     drawer: document.getElementById('drawer'),
     drawerOverlay: document.getElementById('drawerOverlay'),
@@ -277,6 +441,10 @@
     taskNotesSection: document.getElementById('taskNotesSection'),
     drawerTaskName: document.getElementById('drawerTaskName'),
     drawerTaskDates: document.getElementById('drawerTaskDates'),
+    drawerStartInput: document.getElementById('drawerStartInput'),
+    drawerEndInput: document.getElementById('drawerEndInput'),
+    drawerEndWrap: document.getElementById('drawerEndWrap'),
+    drawerDepSelect: document.getElementById('drawerDepSelect'),
   };
   const zoomButtons = Array.from(document.querySelectorAll('.zoom-btn'));
 
@@ -529,6 +697,85 @@
     els.criticalToggle.classList.toggle('bg-gray-200', !active);
     els.criticalToggle.classList.toggle('text-gray-700', !active);
     els.criticalToggle.classList.toggle('hover:bg-gray-300', !active);
+  }
+
+  function updateMobileViewButtons() {
+    const buttons = Array.from(document.querySelectorAll('.mobile-view-btn'));
+    if (!buttons.length) return;
+    buttons.forEach(btn => {
+      const active = btn.dataset.mobileView === mobileView;
+      btn.classList.toggle('bg-white', active);
+      btn.classList.toggle('text-gray-900', active);
+      btn.classList.toggle('shadow', active);
+      btn.classList.toggle('text-gray-600', !active);
+    });
+  }
+
+  function setMobileView(view, persist=false) {
+    if (!isMobile) return;
+    mobileView = view === 'timeline' ? 'timeline' : 'tasks';
+    document.body.classList.toggle('mobile-view-tasks', mobileView === 'tasks');
+    document.body.classList.toggle('mobile-view-timeline', mobileView === 'timeline');
+    if (persist) saveUI({ mobileView });
+    if (mobileView === 'tasks') setMobileEditMode(false, false);
+    updateMobileViewButtons();
+    updateMobileEditToggle();
+  }
+
+  function updateMobileEditToggle() {
+    if (!els.mobileEditToggle) return;
+    const show = isMobile && mobileView === 'timeline';
+    els.mobileEditToggle.classList.toggle('hidden', !show);
+    const active = mobileEditMode;
+    els.mobileEditToggle.textContent = active ? 'Done' : 'Edit';
+    els.mobileEditToggle.classList.toggle('bg-amber-100', active);
+    els.mobileEditToggle.classList.toggle('text-amber-700', active);
+    els.mobileEditToggle.classList.toggle('hover:bg-amber-200', active);
+    els.mobileEditToggle.classList.toggle('bg-gray-200', !active);
+    els.mobileEditToggle.classList.toggle('text-gray-700', !active);
+    els.mobileEditToggle.classList.toggle('hover:bg-gray-300', !active);
+  }
+
+  function setMobileEditMode(active, persist=false) {
+    if (!isMobile) return;
+    mobileEditMode = !!active;
+    document.body.classList.toggle('mobile-edit', mobileEditMode);
+    if (persist) saveUI({ mobileEdit: mobileEditMode });
+    updateMobileEditToggle();
+  }
+
+  function applyMobileState(forceRender=false) {
+    isMobile = MOBILE_QUERY.matches;
+    document.body.classList.toggle('is-mobile', isMobile);
+    if (els.mobileViewToggle) els.mobileViewToggle.classList.toggle('hidden', !isMobile);
+    if (els.mobileAddBtn) els.mobileAddBtn.classList.toggle('hidden', !isMobile);
+    if (!isMobile && els.mobileAddMenu) els.mobileAddMenu.classList.add('hidden');
+    if (!isMobile) {
+      document.body.classList.remove('mobile-view-tasks','mobile-view-timeline','mobile-edit');
+      ROW_H = ROW_H_DEFAULT;
+      updateMobileViewButtons();
+      updateMobileEditToggle();
+      if (forceRender) render();
+      return;
+    }
+    const ui = loadUI() || {};
+    if (typeof ui.mobileView === 'string') mobileView = ui.mobileView;
+    if (typeof ui.mobileEdit === 'boolean') mobileEditMode = ui.mobileEdit;
+    ROW_H = ROW_H_MOBILE;
+    setMobileView(mobileView, false);
+    setMobileEditMode(mobileEditMode, false);
+    if (forceRender) render();
+  }
+
+  function setCriticalPath(active, persist=false) {
+    showCriticalPath = !!active;
+    if (persist) saveUI({ criticalPath: showCriticalPath });
+    updateCriticalToggle();
+    render();
+  }
+
+  function toggleCriticalPath() {
+    setCriticalPath(!showCriticalPath, true);
   }
 
   function setZoom(key, persist=false) {
@@ -816,6 +1063,8 @@
     if (els.drawerTitle) els.drawerTitle.textContent = 'Task Notes';
     if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
     if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
+    syncDrawerSchedule(t);
+    updateDrawerDependencyOptions(t);
     if (els.taskNotesInput) els.taskNotesInput.value = t.notes || '';
   }
 
@@ -823,6 +1072,54 @@
     if (!drawerState.open || drawerState.mode !== 'task' || drawerState.taskId !== t.id) return;
     if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
     if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
+    syncDrawerSchedule(t);
+  }
+
+  function syncDrawerSchedule(t) {
+    if (!els.drawerStartInput || !els.drawerEndInput || !els.drawerEndWrap) return;
+    els.drawerStartInput.value = t.start || '';
+    if (t.milestone) {
+      els.drawerEndWrap.classList.add('hidden');
+    } else {
+      els.drawerEndWrap.classList.remove('hidden');
+      els.drawerEndInput.value = t.end || t.start || '';
+    }
+  }
+
+  function updateDrawerDependencyOptions(t) {
+    if (!els.drawerDepSelect) return;
+    const select = els.drawerDepSelect;
+    select.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'None';
+    select.appendChild(none);
+
+    let hasCurrent = false;
+    const tIndex = tasks.findIndex(x=>x.id===t.id);
+    tasks.forEach((other, idx) => {
+      if (other.id === t.id) return;
+      if (tIndex !== -1 && idx >= tIndex) return;
+      const opt = document.createElement('option');
+      opt.value = other.id;
+      opt.textContent = (other.name || '').trim() || 'Untitled task';
+      if (other.id === t.dependsOnId) {
+        opt.selected = true;
+        hasCurrent = true;
+      }
+      select.appendChild(opt);
+    });
+    if (t.dependsOnId && !hasCurrent) {
+      const current = getTaskById(t.dependsOnId);
+      if (current) {
+        const opt = document.createElement('option');
+        opt.value = current.id;
+        opt.textContent = (current.name || '').trim() || 'Untitled task';
+        opt.selected = true;
+        select.appendChild(opt);
+      }
+    }
+    select.value = t.dependsOnId || '';
   }
 
   function openDrawer(mode, taskId) {
@@ -1315,8 +1612,10 @@
   }
 
   function startLinkDrag(ev, sourceId, originEl) {
-    ev.preventDefault();
+    if (isMobile && !mobileEditMode) return;
+    if (ev.cancelable) ev.preventDefault();
     ev.stopPropagation();
+    if (SUPPORTS_POINTER && ev.isPrimary === false) return;
     if (linkCtx) return;
     if (!els.grid) return;
 
@@ -1345,14 +1644,20 @@
     svg.appendChild(line);
     els.grid.appendChild(svg);
 
-    linkCtx = { sourceId, startX, startY, svg, line, targetId: null };
+    const pointerId = SUPPORTS_POINTER ? ev.pointerId : null;
+    linkCtx = { sourceId, startX, startY, svg, line, targetId: null, pointerId, originEl };
+    if (SUPPORTS_POINTER && pointerId != null && originEl.setPointerCapture) {
+      try { originEl.setPointerCapture(pointerId); } catch {}
+    }
     document.body.classList.add('linking');
-    window.addEventListener('mousemove', onLinkMove);
-    window.addEventListener('mouseup', endLinkDrag, { once: true });
+    window.addEventListener(DRAG_MOVE_EVENT, onLinkMove);
+    window.addEventListener(DRAG_END_EVENT, endLinkDrag);
+    if (DRAG_CANCEL_EVENT) window.addEventListener(DRAG_CANCEL_EVENT, endLinkDrag);
   }
 
   function onLinkMove(ev) {
     if (!linkCtx || !els.grid) return;
+    if (SUPPORTS_POINTER && linkCtx.pointerId != null && ev.pointerId !== linkCtx.pointerId) return;
     autoScrollIfNearEdge(ev);
     const gridRect = els.grid.getBoundingClientRect();
     const x = ev.clientX - gridRect.left;
@@ -1367,13 +1672,19 @@
     highlightLinkTarget(linkCtx.targetId);
   }
 
-  function endLinkDrag() {
+  function endLinkDrag(ev) {
     if (!linkCtx) return;
+    if (SUPPORTS_POINTER && linkCtx.pointerId != null && ev && ev.pointerId !== linkCtx.pointerId) return;
     const { sourceId, targetId } = linkCtx;
     if (linkCtx.svg && linkCtx.svg.parentNode) linkCtx.svg.remove();
     document.body.classList.remove('linking');
-    window.removeEventListener('mousemove', onLinkMove);
+    window.removeEventListener(DRAG_MOVE_EVENT, onLinkMove);
+    window.removeEventListener(DRAG_END_EVENT, endLinkDrag);
+    if (DRAG_CANCEL_EVENT) window.removeEventListener(DRAG_CANCEL_EVENT, endLinkDrag);
     highlightLinkTarget(null);
+    if (SUPPORTS_POINTER && linkCtx.pointerId != null && linkCtx.originEl?.releasePointerCapture) {
+      try { linkCtx.originEl.releasePointerCapture(linkCtx.pointerId); } catch {}
+    }
 
     if (targetId && targetId !== sourceId) {
       if (wouldCreateCycle(sourceId, targetId)) {
@@ -1434,7 +1745,7 @@
       const visible = true;
       const li = document.createElement('li');
       li.className = `group ${visible ? '' : 'hidden'}`;
-      li.draggable = true;
+      li.draggable = !isMobile;
       li.dataset.id = t.id;
       li.dataset.taskId = t.id;
       if (showCriticalPath && criticalIds.has(t.id)) li.classList.add('critical-row');
@@ -1509,6 +1820,7 @@
         updateTaskNameInGantt(t);
         updateDependencyLabels(t);
         updateDrawerTaskMeta(t);
+        if (drawerState.open) updateDrawerContent();
       });
       nameInput.addEventListener('blur', ()=> {
         if (els.search.value.trim()) render();
@@ -1522,7 +1834,7 @@
       });
       const noteBtn = li.querySelector('button[data-task-notes]');
       if (noteBtn) {
-        noteBtn.addEventListener('mousedown', (e)=> e.stopPropagation());
+        noteBtn.addEventListener(DRAG_START_EVENT, (e)=> e.stopPropagation());
         noteBtn.addEventListener('dragstart', (e)=> e.preventDefault());
         noteBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
@@ -1723,11 +2035,11 @@
         const linkHandle = document.createElement('div');
         linkHandle.className = 'link-handle';
         linkHandle.title = 'Drag to link dependency';
-        linkHandle.addEventListener('mousedown', (ev)=> startLinkDrag(ev, t.id, linkHandle));
+        linkHandle.addEventListener(DRAG_START_EVENT, (ev)=> startLinkDrag(ev, t.id, linkHandle));
 
         msWrap.appendChild(ms);
         msWrap.appendChild(linkHandle);
-        ms.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'ms-move', msWrap, minD));
+        ms.addEventListener(DRAG_START_EVENT, (ev)=> startDrag(ev, t.id, 'ms-move', msWrap, minD));
         els.grid.appendChild(msWrap);
       } else {
         const bar = document.createElement('div');
@@ -1759,16 +2071,16 @@
         const linkHandle = document.createElement('div');
         linkHandle.className = 'link-handle';
         linkHandle.title = 'Drag to link dependency';
-        linkHandle.addEventListener('mousedown', (ev)=> startLinkDrag(ev, t.id, linkHandle));
+        linkHandle.addEventListener(DRAG_START_EVENT, (ev)=> startLinkDrag(ev, t.id, linkHandle));
         bar.appendChild(linkHandle);
 
         const hl = document.createElement('div'); hl.className='handle-l';
         const hr = document.createElement('div'); hr.className='handle-r';
         bar.appendChild(hl); bar.appendChild(hr);
 
-        hl.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'resize-l', bar, minD));
-        hr.addEventListener('mousedown', (ev)=> startDrag(ev, t.id, 'resize-r', bar, minD));
-        bar.addEventListener('mousedown', (ev)=> {
+        hl.addEventListener(DRAG_START_EVENT, (ev)=> startDrag(ev, t.id, 'resize-l', bar, minD));
+        hr.addEventListener(DRAG_START_EVENT, (ev)=> startDrag(ev, t.id, 'resize-r', bar, minD));
+        bar.addEventListener(DRAG_START_EVENT, (ev)=> {
           if (ev.target===hl || ev.target===hr) return;
           startDrag(ev, t.id, 'move', bar, minD);
         });
@@ -1779,6 +2091,7 @@
 
     const depsLayer = renderDependencies(minD, totalH, gridWidth, rowIndexById, visibleIds);
     if (depsLayer) els.grid.appendChild(depsLayer);
+    if (drawerState.open) updateDrawerContent();
   }
 
   function renderScale(minD, dayCount, gridWidth) {
@@ -1835,7 +2148,9 @@
   }
 
   function startDrag(ev, id, type, el, frozenMinD) {
-    ev.preventDefault();
+    if (isMobile && !mobileEditMode) return;
+    if (ev.cancelable) ev.preventDefault();
+    if (SUPPORTS_POINTER && ev.isPrimary === false) return;
     const t = tasks.find(x=>x.id===id);
     if (!t) return;
 
@@ -1849,6 +2164,7 @@
     else if (type === 'resize-l') anchorPx = x - elLeftPx;
     else if (type === 'resize-r') anchorPx = x - (elLeftPx + elWidthPx);
 
+    const pointerId = SUPPORTS_POINTER ? ev.pointerId : null;
     dragCtx = {
       type,
       id,
@@ -1859,12 +2175,17 @@
       anchorPx,
       pendingStartISO: t.start,
       pendingEndISO: t.end,
+      pointerId,
     };
 
     el.classList.add('dragging');
     document.body.style.userSelect = 'none';
-    window.addEventListener('mousemove', onDragMove);
-    window.addEventListener('mouseup', endDrag, { once: true });
+    if (SUPPORTS_POINTER && pointerId != null && el.setPointerCapture) {
+      try { el.setPointerCapture(pointerId); } catch {}
+    }
+    window.addEventListener(DRAG_MOVE_EVENT, onDragMove);
+    window.addEventListener(DRAG_END_EVENT, endDrag);
+    if (DRAG_CANCEL_EVENT) window.addEventListener(DRAG_CANCEL_EVENT, endDrag);
   }
 
   function snapDays(deltaDays, ev) {
@@ -1883,6 +2204,7 @@
 
   function onDragMove(ev) {
     if (!dragCtx) return;
+    if (SUPPORTS_POINTER && dragCtx.pointerId != null && ev.pointerId !== dragCtx.pointerId) return;
     autoScrollIfNearEdge(ev);
 
     const t = tasks.find(x=>x.id===dragCtx.id);
@@ -1955,8 +2277,11 @@
     }
   }
 
-  function endDrag() {
-    window.removeEventListener('mousemove', onDragMove);
+  function endDrag(ev) {
+    if (SUPPORTS_POINTER && dragCtx && dragCtx.pointerId != null && ev && ev.pointerId !== dragCtx.pointerId) return;
+    window.removeEventListener(DRAG_MOVE_EVENT, onDragMove);
+    window.removeEventListener(DRAG_END_EVENT, endDrag);
+    if (DRAG_CANCEL_EVENT) window.removeEventListener(DRAG_CANCEL_EVENT, endDrag);
     document.body.style.userSelect = '';
 
     if (!dragCtx) return;
@@ -1969,6 +2294,9 @@
     }
 
     dragCtx.el?.classList.remove('dragging');
+    if (SUPPORTS_POINTER && dragCtx.pointerId != null && dragCtx.el?.releasePointerCapture) {
+      try { dragCtx.el.releasePointerCapture(dragCtx.pointerId); } catch {}
+    }
     dragCtx = null;
 
     applyDependencies();
@@ -2073,16 +2401,24 @@
       showCriticalPath = ui.criticalPath;
     }
     updateCriticalToggle();
-    els.criticalToggle?.addEventListener('click', ()=>{
-      showCriticalPath = !showCriticalPath;
-      saveUI({ criticalPath: showCriticalPath });
-      updateCriticalToggle();
-      render();
-    });
+    els.criticalToggle?.addEventListener('click', toggleCriticalPath);
+  })();
+
+  (function initMobile(){
+    applyMobileState(false);
+    if (MOBILE_QUERY.addEventListener) {
+      MOBILE_QUERY.addEventListener('change', ()=> applyMobileState(true));
+    } else if (MOBILE_QUERY.addListener) {
+      MOBILE_QUERY.addListener(()=> applyMobileState(true));
+    }
   })();
 
   // ===== Events =====
   els.search.addEventListener('input', render);
+  document.querySelectorAll('.mobile-view-btn').forEach(btn => {
+    btn.addEventListener('click', ()=> setMobileView(btn.dataset.mobileView, true));
+  });
+  els.mobileEditToggle?.addEventListener('click', ()=> setMobileEditMode(!mobileEditMode, true));
   els.notesBtn?.addEventListener('click', ()=> openDrawer('project'));
   els.drawerClose?.addEventListener('click', closeDrawer);
   els.drawerOverlay?.addEventListener('click', closeDrawer);
@@ -2105,6 +2441,47 @@
       updateTaskNoteBadge(t.id);
     });
     els.taskNotesInput.addEventListener('blur', ()=> {
+      commitHistory();
+    });
+  }
+
+  if (els.drawerStartInput) {
+    const applyDrawerStart = () => {
+      const t = getTaskById(drawerState.taskId);
+      if (!t) return;
+      if (!applyStartInput(t, els.drawerStartInput.value)) return;
+      applyDependencies();
+      save();
+      render();
+      updateDrawerContent();
+      commitHistory();
+    };
+    els.drawerStartInput.addEventListener('change', applyDrawerStart);
+    els.drawerStartInput.addEventListener('blur', applyDrawerStart);
+  }
+  if (els.drawerEndInput) {
+    const applyDrawerEnd = () => {
+      const t = getTaskById(drawerState.taskId);
+      if (!t || t.milestone) return;
+      if (!applyEndInput(t, els.drawerEndInput.value)) return;
+      applyDependencies();
+      save();
+      render();
+      updateDrawerContent();
+      commitHistory();
+    };
+    els.drawerEndInput.addEventListener('change', applyDrawerEnd);
+    els.drawerEndInput.addEventListener('blur', applyDrawerEnd);
+  }
+  if (els.drawerDepSelect) {
+    els.drawerDepSelect.addEventListener('change', ()=>{
+      const t = getTaskById(drawerState.taskId);
+      if (!t) return;
+      t.dependsOnId = els.drawerDepSelect.value || undefined;
+      applyDependencies();
+      save();
+      render();
+      updateDrawerContent();
       commitHistory();
     });
   }
@@ -2133,15 +2510,101 @@
   els.redoBtn.addEventListener('click', redo);
 
   // Kebab menu
+  const closeMenu = () => els.menu.classList.add('hidden');
+  const closeMobileAddMenu = () => {
+    if (els.mobileAddMenu) els.mobileAddMenu.classList.add('hidden');
+  };
   els.menuBtn.addEventListener('click', (e)=>{
     e.stopPropagation();
+    closeMobileAddMenu();
     els.menu.classList.toggle('hidden');
   });
   document.addEventListener('click', ()=> {
-    els.menu.classList.add('hidden');
+    closeMenu();
+    closeMobileAddMenu();
     document.querySelectorAll('.palette:not(.hidden)').forEach(p=>p.classList.add('hidden'));
   });
   els.menu.addEventListener('click', (e)=> e.stopPropagation());
+  els.menuUndo?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    undo();
+  });
+  els.menuRedo?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    redo();
+  });
+  els.menuShare?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    sharePortable();
+  });
+  els.menuNotes?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    openDrawer('project');
+  });
+  els.menuCritical?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    toggleCriticalPath();
+  });
+  els.menuToday?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    scrollToDate(todayUTC(), 'left');
+  });
+  els.menuCenterToday?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    scrollToDate(todayUTC(), 'center');
+  });
+  els.menuZoomDay?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    setZoom('day', true);
+  });
+  els.menuZoomWeek?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    setZoom('week', true);
+  });
+  els.menuZoomMonth?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    setZoom('month', true);
+  });
+
+  els.mobileAddBtn?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMenu();
+    if (els.mobileAddMenu) els.mobileAddMenu.classList.toggle('hidden');
+  });
+  els.mobileAddMenu?.addEventListener('click', (e)=> e.stopPropagation());
+  els.mobileAddTask?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMobileAddMenu();
+    addTask(false);
+  });
+  els.mobileAddMilestone?.addEventListener('click', (e)=>{
+    e.preventDefault();
+    e.stopPropagation();
+    closeMobileAddMenu();
+    addTask(true);
+  });
 
   els.clearData.addEventListener('click', (e)=>{
     e.preventDefault();
