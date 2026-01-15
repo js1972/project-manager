@@ -98,7 +98,7 @@
       overflow: hidden;
     }
 
-    @media (max-width: 767px) {
+    @media (max-width: 767px), (max-height: 520px) and (orientation: landscape) {
       body.is-mobile .mobile-only:not(.hidden) { display: inline-flex; }
       body.is-mobile .mobile-menu-only:not(.hidden) { display: block; }
       body.is-mobile .mobile-hide { display: none !important; }
@@ -384,7 +384,7 @@
   let isMobile = false;
   let mobileView = 'tasks';
   let mobileEditMode = false;
-  const MOBILE_QUERY = window.matchMedia('(max-width: 767px)');
+  const MOBILE_QUERY = window.matchMedia('(max-width: 767px), (max-height: 520px) and (orientation: landscape)');
   const SUPPORTS_POINTER = 'PointerEvent' in window;
   const DRAG_START_EVENT = SUPPORTS_POINTER ? 'pointerdown' : 'mousedown';
   const DRAG_MOVE_EVENT = SUPPORTS_POINTER ? 'pointermove' : 'mousemove';
