@@ -212,6 +212,11 @@
       min-width: 0;
       max-width: 100%;
     }
+    .task-meta { display: inline-flex; align-items: center; gap: 6px; }
+    .status-select,
+    .progress-input { min-width: 0; }
+    body.left-hide-start .task-meta { display: none; }
+    body.is-mobile .task-meta { display: inline-flex !important; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -351,6 +356,14 @@
                 <label class="text-xs text-gray-500" for="drawerDepSelect">Depends on</label>
                 <select id="drawerDepSelect" class="w-full text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
               </div>
+              <div class="space-y-1">
+                <label class="text-xs text-gray-500" for="drawerStatusSelect">Status</label>
+                <select id="drawerStatusSelect" class="w-full text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"></select>
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs text-gray-500" for="drawerProgressInput">Progress (%)</label>
+                <input id="drawerProgressInput" type="number" min="0" max="100" step="1" class="w-full text-sm text-right font-mono text-gray-600 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+              </div>
             </div>
           </div>
           <div class="space-y-2">
@@ -384,7 +397,7 @@
   const UI_KEY = 'bdc-fre-gantt-ui-v1';
   const EMBEDDED_DATA_ID = 'embeddedData';
 
-  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string,dependsOnId?:string,notes?:string}} Task */
+  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string,dependsOnId?:string,notes?:string,status?:string,progress?:number}} Task */
   /** @type {Task[]} */
   let tasks = [];
   let filteredIds = new Set();
@@ -458,6 +471,8 @@
     drawerEndInput: document.getElementById('drawerEndInput'),
     drawerEndWrap: document.getElementById('drawerEndWrap'),
     drawerDepSelect: document.getElementById('drawerDepSelect'),
+    drawerStatusSelect: document.getElementById('drawerStatusSelect'),
+    drawerProgressInput: document.getElementById('drawerProgressInput'),
   };
   const zoomButtons = Array.from(document.querySelectorAll('.zoom-btn'));
 
@@ -551,6 +566,15 @@
   const DEP_LINE_COLOR = '#94a3b8';
   const LINK_LINE_COLOR = '#f59e0b';
 
+  const STATUS_OPTIONS = [
+    { value: 'not_started', label: 'Not started' },
+    { value: 'in_progress', label: 'In progress' },
+    { value: 'done', label: 'Done' },
+    { value: 'delayed', label: 'Delayed' },
+  ];
+  const STATUS_LABELS = new Map(STATUS_OPTIONS.map(opt => [opt.value, opt.label]));
+  const STATUS_VALUE_BY_LABEL = new Map(STATUS_OPTIONS.map(opt => [opt.label.toLowerCase(), opt.value]));
+
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g,'&amp;')
@@ -586,6 +610,33 @@
   function normalizeColor(value) {
     const s = String(value || '').trim();
     return isValidHexColor(s) ? s : '';
+  }
+  function clampProgress(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(100, Math.round(n)));
+  }
+  function statusForProgress(progress) {
+    if (progress >= 100) return 'done';
+    if (progress <= 0) return 'not_started';
+    return 'in_progress';
+  }
+  function normalizeStatus(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const key = raw.toLowerCase();
+    const normalized = key.replace(/\s+/g, '_');
+    if (STATUS_LABELS.has(normalized)) return normalized;
+    if (STATUS_VALUE_BY_LABEL.has(key)) return STATUS_VALUE_BY_LABEL.get(key);
+    return '';
+  }
+  function parseProgressValue(value) {
+    const raw = String(value ?? '').trim();
+    if (raw === '') return 0;
+    const cleaned = raw.replace('%', '');
+    const n = Number(cleaned);
+    if (!Number.isFinite(n)) return null;
+    return clampProgress(n);
   }
 
   function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
@@ -834,6 +885,10 @@
         if (normalized) out.color = normalized;
         else delete out.color;
       }
+      const progress = clampProgress(out.progress);
+      out.progress = progress;
+      const status = normalizeStatus(out.status);
+      out.status = status || statusForProgress(progress);
       const startRaw = toDateSafe(out.start);
       const endRaw = toDateSafe(out.end);
       const baseStart = startRaw || endRaw || todayUTC();
@@ -1094,6 +1149,7 @@
     if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
     if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
     syncDrawerSchedule(t);
+    syncDrawerStatusProgress(t);
     updateDrawerDependencyOptions(t);
     if (els.taskNotesInput) els.taskNotesInput.value = t.notes || '';
   }
@@ -1103,6 +1159,7 @@
     if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
     if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
     syncDrawerSchedule(t);
+    syncDrawerStatusProgress(t);
   }
 
   function syncDrawerSchedule(t) {
@@ -1114,6 +1171,21 @@
       els.drawerEndWrap.classList.remove('hidden');
       els.drawerEndInput.value = t.end || t.start || '';
     }
+  }
+
+  function ensureStatusOptions(select) {
+    if (!select) return;
+    if (select.options.length === STATUS_OPTIONS.length) return;
+    select.innerHTML = STATUS_OPTIONS.map(opt => `<option value="${opt.value}">${escapeHtml(opt.label)}</option>`).join('');
+  }
+
+  function syncDrawerStatusProgress(t) {
+    if (!els.drawerStatusSelect || !els.drawerProgressInput) return;
+    const progressVal = clampProgress(t.progress);
+    const statusVal = normalizeStatus(t.status) || statusForProgress(progressVal);
+    ensureStatusOptions(els.drawerStatusSelect);
+    els.drawerStatusSelect.value = statusVal;
+    els.drawerProgressInput.value = String(progressVal);
   }
 
   function updateDrawerDependencyOptions(t) {
@@ -1219,12 +1291,15 @@
     if (!els.grid) return;
     const el = findGanttItem(t.id);
     if (!el) return;
+    const progressVal = clampProgress(t.progress);
+    const statusVal = normalizeStatus(t.status) || statusForProgress(progressVal);
+    const statusLabel = STATUS_LABELS.get(statusVal) || 'Not started';
     if (t.milestone) {
-      el.title = `${t.name} — ${t.start}`;
+      el.title = `${t.name} — ${t.start} (${progressVal}% ${statusLabel})`;
       return;
     }
     const end = t.end || t.start;
-    el.title = `${t.name} — ${t.start} → ${end}`;
+    el.title = `${t.name} — ${t.start} → ${end} (${progressVal}% ${statusLabel})`;
     const label = el.querySelector('.bar-label');
     if (label) label.textContent = t.name;
   }
@@ -1262,12 +1337,34 @@
     return true;
   }
 
+  function syncStatusFromProgress(t, progress) {
+    if (progress <= 0) t.status = 'not_started';
+    else if (progress >= 100) t.status = 'done';
+  }
+
+  function applyProgressInput(t, value) {
+    const parsed = parseProgressValue(value);
+    if (parsed == null) return false;
+    if (t.progress === parsed) return false;
+    t.progress = parsed;
+    syncStatusFromProgress(t, parsed);
+    return true;
+  }
+
+  function applyStatusInput(t, value) {
+    const next = normalizeStatus(value);
+    if (!next) return false;
+    if (t.status === next) return false;
+    t.status = next;
+    return true;
+  }
+
   function sampleTasks() {
     const base = snapStartToBusinessDay(todayUTC());
-    const t1 = { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5' };
-    const t2 = { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9', dependsOnId: t1.id };
-    const t3 = { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea', dependsOnId: t2.id };
-    const t4 = { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981', dependsOnId: t3.id };
+    const t1 = { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5', status: 'done', progress: 100 };
+    const t2 = { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9', dependsOnId: t1.id, status: 'in_progress', progress: 45 };
+    const t3 = { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea', dependsOnId: t2.id, status: 'delayed', progress: 0 };
+    const t4 = { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981', dependsOnId: t3.id, status: 'not_started', progress: 0 };
     return [t1, t2, t3, t4];
   }
 
@@ -1417,13 +1514,18 @@
         milestone: findIndex('milestone'),
         dependsOnId: findIndex('dependsonid'),
         color: findIndex('color'),
+        status: findIndex('status'),
+        progress: findIndex('progress'),
         projectTitle: findIndex('projecttitle'),
         notes: notesIndex,
         projectNotes: findIndex('projectnotes'),
       };
       startIdx = 1;
     } else {
-      map = { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, projectTitle: 7, notes: 8, projectNotes: 9 };
+      const legacy = rows[0] && rows[0].length <= 10;
+      map = legacy
+        ? { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, projectTitle: 7, notes: 8, projectNotes: 9 }
+        : { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, status: 7, progress: 8, projectTitle: 9, notes: 10, projectNotes: 11 };
     }
 
     const imported = [];
@@ -1444,6 +1546,8 @@
       const milestoneRaw = String(val('milestone')).trim().toLowerCase();
       const dependsRaw = String(val('dependsOnId')).trim();
       const colorRaw = String(val('color')).trim();
+      const statusRaw = String(val('status')).trim();
+      const progressRaw = String(val('progress')).trim();
       const titleRaw = String(val('projectTitle')).trim();
       const notesRaw = String(val('notes')).trim();
       const projectNotesRaw = String(val('projectNotes')).trim();
@@ -1462,6 +1566,11 @@
       }
       if (dependsRaw) task.dependsOnId = dependsRaw;
       if (colorRaw) task.color = colorRaw;
+      if (statusRaw) task.status = statusRaw;
+      if (progressRaw) {
+        const parsed = parseProgressValue(progressRaw);
+        if (parsed != null) task.progress = parsed;
+      }
       imported.push(task);
       if (!importedTitle && titleRaw) importedTitle = titleRaw;
       if (!importedProjectNotes && projectNotesRaw) importedProjectNotes = projectNotesRaw;
@@ -1494,7 +1603,7 @@
   function exportCsv() {
     const title = els.projectTitle ? els.projectTitle.value.trim() : '';
     const titleValue = title || 'Project name';
-    const header = ['id','name','start','end','milestone','dependsOnId','color','projectTitle','notes','projectNotes'];
+    const header = ['id','name','start','end','milestone','dependsOnId','color','status','progress','projectTitle','notes','projectNotes'];
     const rows = [header];
     tasks.forEach(t => {
       rows.push([
@@ -1505,6 +1614,8 @@
         t.milestone ? 'true' : 'false',
         t.dependsOnId || '',
         t.color || '',
+        t.status || '',
+        Number.isFinite(t.progress) ? t.progress : '',
         titleValue,
         t.notes || '',
         projectNotes || '',
@@ -1809,6 +1920,12 @@
       const endVal = t.milestone ? '' : (t.end || t.start);
       const durBiz = t.milestone ? null : businessDaysInclusive(s, e);
       const durTxt = t.milestone ? '—' : `${durBiz}d`;
+      const progressVal = clampProgress(t.progress);
+      const statusVal = normalizeStatus(t.status) || statusForProgress(progressVal);
+      const statusOptionsHTML = STATUS_OPTIONS.map(opt => {
+        const selected = opt.value === statusVal ? ' selected' : '';
+        return `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
+      }).join('');
 
       const curColor = normalizeColor(t.color) || (t.milestone ? DEFAULT_MILESTONE_COLOR : DEFAULT_TASK_COLOR);
       const depOptions = ['<option value="">None</option>'];
@@ -1848,6 +1965,13 @@
             </button>
             <div class="flex items-center gap-2 min-w-0">
               <input class="flex-1 min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
+              <div class="task-meta">
+                <select class="status-select w-28 h-7 text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-status="true" aria-label="Status" draggable="false">${statusOptionsHTML}</select>
+              </div>
+              <div class="task-meta flex items-center gap-1">
+                <input type="number" min="0" max="100" step="1" class="progress-input w-14 h-7 text-xs md:text-sm text-right font-mono text-gray-600 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-progress="true" aria-label="Progress percent" value="${escapeHtml(String(progressVal))}" draggable="false" />
+                <span class="text-[10px] text-gray-400">%</span>
+              </div>
               <button type="button" class="note-btn ${t.notes && t.notes.trim() ? 'has-notes' : ''}" title="Task notes" aria-label="Task notes" data-task-notes="true" draggable="false">N</button>
             </div>
             <div class="col-dep flex items-center gap-1">
@@ -1895,6 +2019,44 @@
         noteBtn.addEventListener('click', (e)=>{
           e.stopPropagation();
           openDrawer('task', t.id);
+        });
+      }
+      const statusSelect = li.querySelector('select[data-status]');
+      if (statusSelect) {
+        statusSelect.addEventListener('dragstart', (e)=> e.preventDefault());
+        statusSelect.addEventListener('change', ()=>{
+          if (!applyStatusInput(t, statusSelect.value)) return;
+          save();
+          updateDrawerTaskMeta(t);
+          render();
+          if (drawerState.open) updateDrawerContent();
+          commitHistory();
+        });
+      }
+      const progressInput = li.querySelector('input[data-progress]');
+      if (progressInput) {
+        progressInput.addEventListener('dragstart', (e)=> e.preventDefault());
+        progressInput.addEventListener('change', ()=>{
+          if (!applyProgressInput(t, progressInput.value)) return;
+          save();
+          updateDrawerTaskMeta(t);
+          render();
+          if (drawerState.open) updateDrawerContent();
+          commitHistory();
+        });
+        progressInput.addEventListener('blur', ()=>{
+          if (!applyProgressInput(t, progressInput.value)) return;
+          save();
+          updateDrawerTaskMeta(t);
+          render();
+          if (drawerState.open) updateDrawerContent();
+          commitHistory();
+        });
+        progressInput.addEventListener('keydown', (e)=>{
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            progressInput.blur();
+          }
         });
       }
       const startInput = li.querySelector('input[data-start]');
@@ -2089,7 +2251,10 @@
         ms.style.top = '0px';
         const msColor = normalizeColor(t.color) || DEFAULT_MILESTONE_COLOR;
         ms.style.background = msColor;
-        ms.title = `${t.name} — ${t.start}`;
+        const msProgress = clampProgress(t.progress);
+        const msStatus = normalizeStatus(t.status) || statusForProgress(msProgress);
+        const msStatusLabel = STATUS_LABELS.get(msStatus) || 'Not started';
+        ms.title = `${t.name} — ${t.start} (${msProgress}% ${msStatusLabel})`;
         ms.dataset.id = t.id;
         ms.dataset.taskId = t.id;
         if (showCriticalPath) {
@@ -2114,8 +2279,16 @@
         bar.style.height = '24px';
         bar.style.width = w + 'px';
         const bg = normalizeColor(t.color) || DEFAULT_TASK_COLOR;
-        bar.style.background = bg;
-        bar.title = `${t.name} — ${t.start} → ${t.end || t.start}`;
+        const progressVal = clampProgress(t.progress);
+        const statusVal = normalizeStatus(t.status) || statusForProgress(progressVal);
+        const statusLabel = STATUS_LABELS.get(statusVal) || 'Not started';
+        bar.style.backgroundColor = bg;
+        if (progressVal > 0) {
+          bar.style.backgroundImage = `linear-gradient(90deg, rgba(0,0,0,0.22) 0 ${progressVal}%, rgba(0,0,0,0) ${progressVal}% 100%)`;
+        } else {
+          bar.style.backgroundImage = 'none';
+        }
+        bar.title = `${t.name} — ${t.start} → ${t.end || t.start} (${progressVal}% ${statusLabel})`;
         bar.dataset.taskId = t.id;
         if (showCriticalPath) {
           if (criticalIds.has(t.id)) bar.classList.add('critical-bar');
@@ -2379,7 +2552,9 @@
         name: 'New Milestone',
         start: s,
         milestone: true,
-        color: DEFAULT_MILESTONE_COLOR
+        color: DEFAULT_MILESTONE_COLOR,
+        status: 'not_started',
+        progress: 0
       });
     } else {
       const end = toISO(addBusinessDays(base, 5-1));
@@ -2389,7 +2564,9 @@
         start: s,
         end,
         milestone: false,
-        color: DEFAULT_TASK_COLOR
+        color: DEFAULT_TASK_COLOR,
+        status: 'not_started',
+        progress: 0
       });
     }
     save();
@@ -2555,6 +2732,30 @@
       updateDrawerContent();
       commitHistory();
     });
+  }
+  if (els.drawerStatusSelect) {
+    els.drawerStatusSelect.addEventListener('change', ()=>{
+      const t = getTaskById(drawerState.taskId);
+      if (!t) return;
+      if (!applyStatusInput(t, els.drawerStatusSelect.value)) return;
+      save();
+      render();
+      updateDrawerContent();
+      commitHistory();
+    });
+  }
+  if (els.drawerProgressInput) {
+    const applyDrawerProgress = () => {
+      const t = getTaskById(drawerState.taskId);
+      if (!t) return;
+      if (!applyProgressInput(t, els.drawerProgressInput.value)) return;
+      save();
+      render();
+      updateDrawerContent();
+      commitHistory();
+    };
+    els.drawerProgressInput.addEventListener('change', applyDrawerProgress);
+    els.drawerProgressInput.addEventListener('blur', applyDrawerProgress);
   }
 
   if (els.projectTitle) {

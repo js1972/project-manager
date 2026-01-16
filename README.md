@@ -9,13 +9,14 @@ A single-file HTML app for managing projects with an interactive Gantt chart. Al
 - Dependency linking via drag handles.
 - Critical path highlighting with a toggle.
 - Inline start/end date editing plus drag/resize.
+- Task status and % complete with progress overlays.
 - Undo/redo for common edits.
 - Zoom levels (day/week/month).
 - Search filter with compact view.
 - Project and task notes in a drawer.
 - Local persistence via `localStorage`.
 - Export to a portable HTML file (Share button).
-- Export tasks to CSV (includes `projectTitle`, `projectNotes`, and per-task `notes`).
+- Export tasks to CSV (includes `status`, `progress`, `projectTitle`, `projectNotes`, and per-task `notes`).
 - Import tasks from CSV (overwrites after confirmation).
 
 ## Usage
