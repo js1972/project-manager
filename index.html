@@ -12,10 +12,14 @@
       --day-w: 24px;
       --scale-h: 44px;
       --left-w: 560px;
+      --col-task-min: 120px;
+      --col-notes: 44px;
       --col-dep: 150px;
       --col-start: 110px;
       --col-end: 110px;
       --col-dur: 72px;
+      --col-progress: 86px;
+      --col-status: 128px;
     }
     .gantt-grid-bg {
       background-image: linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px);
@@ -49,6 +53,35 @@
     .milestone.critical-milestone { box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.75), 0 8px 16px rgba(244, 63, 94, 0.25); }
     .critical-row .task-row-grid { box-shadow: inset 3px 0 0 rgba(244, 63, 94, 0.9); background: rgba(244, 63, 94, 0.04); }
     .non-critical { opacity: 0.6; filter: saturate(0.7); }
+
+    /* Row + bar selection mapping */
+    .task-hover .task-row-grid {
+      background-image: linear-gradient(0deg, rgba(99, 102, 241, 0.08), rgba(99, 102, 241, 0.08));
+      box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.35);
+    }
+    .task-selected .task-row-grid {
+      background-image: linear-gradient(0deg, rgba(99, 102, 241, 0.14), rgba(99, 102, 241, 0.14));
+      box-shadow: inset 3px 0 0 rgba(79, 70, 229, 0.9), inset 0 0 0 1px rgba(99, 102, 241, 0.35);
+    }
+    .bar-hover {
+      outline: 2px solid rgba(99, 102, 241, 0.7);
+      outline-offset: 2px;
+      box-shadow: 0 4px 10px rgba(99, 102, 241, 0.18);
+    }
+    .bar-selected {
+      outline: 3px solid rgba(79, 70, 229, 0.98);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.25), 0 10px 20px rgba(79, 70, 229, 0.25);
+    }
+    .milestone-hover {
+      outline: 2px solid rgba(99, 102, 241, 0.7);
+      outline-offset: 3px;
+    }
+    .milestone-selected {
+      outline: 3px solid rgba(79, 70, 229, 0.98);
+      outline-offset: 3px;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.25);
+    }
 
     /* Dependency link handle */
     .link-handle { position:absolute; width: 12px; height: 12px; border-radius: 999px; background: #ffffff; border: 2px solid #64748b; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18); cursor: crosshair; opacity: 0; transition: opacity 120ms ease; }
@@ -117,7 +150,8 @@
       body.is-mobile.mobile-view-timeline #leftPane,
       body.is-mobile.mobile-view-timeline #headerGrid > div:first-child { display: none; }
 
-      body.is-mobile { --col-dep: 0px; --col-start: 0px; --col-end: 0px; --col-dur: 0px; }
+      body.is-mobile { --col-task-min: 80px; --col-notes: 32px; --col-progress: 0px; --col-status: 90px; --col-dep: 0px; --col-start: 0px; --col-end: 0px; --col-dur: 0px; }
+      body.is-mobile .col-progress,
       body.is-mobile .col-dep,
       body.is-mobile .col-start,
       body.is-mobile .col-end,
@@ -183,8 +217,9 @@
     .palette-dot:hover { transform: translateY(-1px); }
     .palette-label { font-size: 11px; color: rgba(0,0,0,0.55); margin-bottom: 6px; user-select:none; }
 
-    /* Left pane: keep Task name visible when narrowing */
-    .task-row-grid { grid-template-columns: 20px 26px minmax(140px, 1fr) var(--col-dep) var(--col-start) var(--col-end) var(--col-dur) 28px; }
+    /* Left pane: keep Task + Notes visible when narrowing */
+    .task-row-grid { grid-template-columns: 20px 26px minmax(var(--col-task-min), 1fr) var(--col-notes) var(--col-start) var(--col-end) var(--col-dur) var(--col-progress) var(--col-status) var(--col-dep) 28px; gap: 8px; }
+    body.is-mobile .task-row-grid { gap: 6px; }
     .task-row-grid > :nth-child(1) { grid-column: 1; }
     .task-row-grid > :nth-child(2) { grid-column: 2; }
     .task-row-grid > :nth-child(3) { grid-column: 3; }
@@ -193,18 +228,40 @@
     .task-row-grid > :nth-child(6) { grid-column: 6; }
     .task-row-grid > :nth-child(7) { grid-column: 7; }
     .task-row-grid > :nth-child(8) { grid-column: 8; }
+    .task-row-grid > :nth-child(9) { grid-column: 9; }
+    .task-row-grid > :nth-child(10) { grid-column: 10; }
+    .task-row-grid > :nth-child(11) { grid-column: 11; }
 
+    body.left-hide-progress { --col-progress: 0px; }
+    body.left-hide-status { --col-status: 0px; }
     body.left-hide-dur { --col-dur: 0px; }
     body.left-hide-end { --col-end: 0px; }
     body.left-hide-start { --col-start: 0px; }
     body.left-hide-dep { --col-dep: 0px; }
 
+    body.left-hide-progress .col-progress,
+    body.left-hide-status .col-status,
     body.left-hide-dur .col-dur,
     body.left-hide-end .col-end,
     body.left-hide-start .col-start,
     body.left-hide-dep .col-dep { display:none; }
 
     .task-name { min-width: 0; }
+    .assignee-chip {
+      font-size: 11px;
+      font-weight: 600;
+      color: #475569;
+      background: rgba(15, 23, 42, 0.06);
+      padding: 2px 6px;
+      border-radius: 999px;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .col-notes { min-width: 0; }
+    .col-progress { min-width: 0; }
+    .col-status { min-width: 0; }
     .col-dep { min-width: 0; }
     .col-dep select { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     input.col-start,
@@ -212,11 +269,11 @@
       min-width: 0;
       max-width: 100%;
     }
-    .task-meta { display: inline-flex; align-items: center; gap: 6px; }
     .status-select,
     .progress-input { min-width: 0; }
-    body.left-hide-start .task-meta { display: none; }
-    body.is-mobile .task-meta { display: inline-flex !important; }
+    .task-complete .task-name,
+    .task-complete .assignee-chip,
+    .bar-complete .bar-label { text-decoration: line-through; }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
@@ -284,14 +341,17 @@
       <!-- Column headers -->
       <div id="headerGrid" class="grid" style="grid-template-columns: var(--left-w) 8px 1fr;">
         <div class="px-4 py-2 text-xs font-medium text-gray-600 border-b">
-          <div class="grid items-center task-row-grid" style="gap: 8px;">
+          <div class="grid items-center task-row-grid">
             <div></div>
             <div></div>
             <div>Task</div>
-            <div class="text-left col-dep">Depends</div>
+            <div class="text-center col-notes">Notes</div>
             <div class="text-right col-start">Start</div>
             <div class="text-right col-end">End</div>
             <div class="text-right col-dur">Dur</div>
+            <div class="text-right col-progress">Progress</div>
+            <div class="text-left col-status">Status</div>
+            <div class="text-left col-dep">Depends</div>
             <div></div>
           </div>
         </div>
@@ -342,6 +402,15 @@
             <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Task</div>
             <div id="drawerTaskName" class="text-sm font-semibold text-gray-900"></div>
             <div id="drawerTaskDates" class="text-xs text-gray-500"></div>
+          </div>
+          <div class="space-y-2">
+            <div class="text-xs font-semibold text-gray-600">Assignment</div>
+            <div class="grid gap-2">
+              <div class="space-y-1">
+                <label class="text-xs text-gray-500" for="drawerAssigneeInput">Assignee</label>
+                <input id="drawerAssigneeInput" type="text" class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Person or team" />
+              </div>
+            </div>
           </div>
           <div class="space-y-2">
             <div class="text-xs font-semibold text-gray-600">Schedule</div>
@@ -397,12 +466,14 @@
   const UI_KEY = 'bdc-fre-gantt-ui-v1';
   const EMBEDDED_DATA_ID = 'embeddedData';
 
-  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string,dependsOnId?:string,notes?:string,status?:string,progress?:number}} Task */
+  /** @typedef {{id:string,name:string,start:string,end?:string,milestone?:boolean,color?:string,dependsOnId?:string,notes?:string,assignee?:string,status?:string,progress?:number}} Task */
   /** @type {Task[]} */
   let tasks = [];
   let filteredIds = new Set();
   let showCriticalPath = false;
   let projectNotes = '';
+  let selectedTaskId = null;
+  let hoverTaskId = null;
 
   let dragCtx = null;
   let linkCtx = null;
@@ -467,6 +538,7 @@
     taskNotesSection: document.getElementById('taskNotesSection'),
     drawerTaskName: document.getElementById('drawerTaskName'),
     drawerTaskDates: document.getElementById('drawerTaskDates'),
+    drawerAssigneeInput: document.getElementById('drawerAssigneeInput'),
     drawerStartInput: document.getElementById('drawerStartInput'),
     drawerEndInput: document.getElementById('drawerEndInput'),
     drawerEndWrap: document.getElementById('drawerEndWrap'),
@@ -737,14 +809,18 @@
   }
 
   function applyLeftLayout(w) {
-    document.body.classList.remove('left-hide-dur','left-hide-end','left-hide-start','left-hide-dep');
-    if (w < 520) {
-      document.body.classList.add('left-hide-start','left-hide-end','left-hide-dur','left-hide-dep');
-    } else if (w < 600) {
-      document.body.classList.add('left-hide-end','left-hide-dur','left-hide-dep');
-    } else if (w < 680) {
-      document.body.classList.add('left-hide-end','left-hide-dep');
-    } else if (w < 760) {
+    document.body.classList.remove('left-hide-progress','left-hide-status','left-hide-dur','left-hide-end','left-hide-start','left-hide-dep');
+    if (w < 560) {
+      document.body.classList.add('left-hide-start','left-hide-end','left-hide-dur','left-hide-progress','left-hide-status','left-hide-dep');
+    } else if (w < 640) {
+      document.body.classList.add('left-hide-end','left-hide-dur','left-hide-progress','left-hide-status','left-hide-dep');
+    } else if (w < 720) {
+      document.body.classList.add('left-hide-dur','left-hide-progress','left-hide-status','left-hide-dep');
+    } else if (w < 800) {
+      document.body.classList.add('left-hide-progress','left-hide-status','left-hide-dep');
+    } else if (w < 880) {
+      document.body.classList.add('left-hide-status','left-hide-dep');
+    } else if (w < 960) {
       document.body.classList.add('left-hide-dep');
     }
   }
@@ -880,6 +956,12 @@
       if (typeof out.name !== 'string') out.name = 'Untitled task';
       if (out.dependsOnId && typeof out.dependsOnId !== 'string') delete out.dependsOnId;
       if (out.notes != null && typeof out.notes !== 'string') out.notes = String(out.notes);
+      if (out.assignee != null && typeof out.assignee !== 'string') out.assignee = String(out.assignee);
+      if (typeof out.assignee === 'string') {
+        const trimmed = out.assignee.trim();
+        if (trimmed) out.assignee = trimmed;
+        else delete out.assignee;
+      }
       if (out.color) {
         const normalized = normalizeColor(out.color);
         if (normalized) out.color = normalized;
@@ -1148,6 +1230,7 @@
     if (els.drawerTitle) els.drawerTitle.textContent = 'Task Notes';
     if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
     if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
+    syncDrawerAssignee(t);
     syncDrawerSchedule(t);
     syncDrawerStatusProgress(t);
     updateDrawerDependencyOptions(t);
@@ -1158,8 +1241,14 @@
     if (!drawerState.open || drawerState.mode !== 'task' || drawerState.taskId !== t.id) return;
     if (els.drawerTaskName) els.drawerTaskName.textContent = t.name || 'Untitled task';
     if (els.drawerTaskDates) els.drawerTaskDates.textContent = formatTaskDates(t);
+    syncDrawerAssignee(t);
     syncDrawerSchedule(t);
     syncDrawerStatusProgress(t);
+  }
+
+  function syncDrawerAssignee(t) {
+    if (!els.drawerAssigneeInput) return;
+    els.drawerAssigneeInput.value = t.assignee || '';
   }
 
   function syncDrawerSchedule(t) {
@@ -1268,6 +1357,43 @@
     return null;
   }
 
+  function updateTaskSelection() {
+    const selectedId = selectedTaskId;
+    const hoverId = hoverTaskId;
+    document.querySelectorAll('#taskList li').forEach(li => {
+      const id = li.dataset.taskId;
+      li.classList.toggle('task-selected', !!id && id === selectedId);
+      li.classList.toggle('task-hover', !!id && id === hoverId);
+    });
+    if (!els.grid) return;
+    els.grid.querySelectorAll('.bar, .milestone').forEach(el => {
+      const id = el.dataset.taskId || el.dataset.id;
+      const isSelected = !!id && id === selectedId;
+      const isHover = !!id && id === hoverId;
+      if (el.classList.contains('bar')) {
+        el.classList.toggle('bar-selected', isSelected);
+        el.classList.toggle('bar-hover', isHover);
+        return;
+      }
+      el.classList.toggle('milestone-selected', isSelected);
+      el.classList.toggle('milestone-hover', isHover);
+    });
+  }
+
+  function setSelectedTask(taskId) {
+    const next = taskId || null;
+    if (selectedTaskId === next) return;
+    selectedTaskId = next;
+    updateTaskSelection();
+  }
+
+  function setHoverTask(taskId) {
+    const next = taskId || null;
+    if (hoverTaskId === next) return;
+    hoverTaskId = next;
+    updateTaskSelection();
+  }
+
   function updateTaskNoteBadge(taskId) {
     const li = findTaskRow(taskId);
     if (!li) return;
@@ -1359,12 +1485,24 @@
     return true;
   }
 
+  function applyAssigneeInput(t, value) {
+    const next = String(value || '').trim();
+    if (!next) {
+      if (!t.assignee) return false;
+      delete t.assignee;
+      return true;
+    }
+    if (t.assignee === next) return false;
+    t.assignee = next;
+    return true;
+  }
+
   function sampleTasks() {
     const base = snapStartToBusinessDay(todayUTC());
-    const t1 = { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5', status: 'done', progress: 100 };
-    const t2 = { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9', dependsOnId: t1.id, status: 'in_progress', progress: 45 };
-    const t3 = { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea', dependsOnId: t2.id, status: 'delayed', progress: 0 };
-    const t4 = { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981', dependsOnId: t3.id, status: 'not_started', progress: 0 };
+    const t1 = { id: uid(), name: 'Project Kickoff', start: toISO(base), end: toISO(addBusinessDays(base, 5-1)), color: '#4f46e5', status: 'done', progress: 100, assignee: 'PMO' };
+    const t2 = { id: uid(), name: 'Data Model Draft', start: toISO(addBusinessDays(base, 2)), end: toISO(addBusinessDays(addBusinessDays(base, 2), 10-1)), color: '#0ea5e9', dependsOnId: t1.id, status: 'in_progress', progress: 45, assignee: 'Data Team' };
+    const t3 = { id: uid(), name: 'Milestone: Exec Checkpoint', start: toISO(addBusinessDays(base, 8)), milestone:true, color: '#9333ea', dependsOnId: t2.id, status: 'delayed', progress: 0, assignee: 'Exec Team' };
+    const t4 = { id: uid(), name: 'PoC Build', start: toISO(addBusinessDays(base, 10)), end: toISO(addBusinessDays(addBusinessDays(base, 10), 12-1)), color: '#10b981', dependsOnId: t3.id, status: 'not_started', progress: 0, assignee: 'Platform' };
     return [t1, t2, t3, t4];
   }
 
@@ -1509,6 +1647,7 @@
       map = {
         id: findIndex('id'),
         name: findIndex('name'),
+        assignee: findIndex('assignee'),
         start: findIndex('start'),
         end: findIndex('end'),
         milestone: findIndex('milestone'),
@@ -1523,9 +1662,12 @@
       startIdx = 1;
     } else {
       const legacy = rows[0] && rows[0].length <= 10;
+      const extended = rows[0] && rows[0].length >= 13;
       map = legacy
         ? { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, projectTitle: 7, notes: 8, projectNotes: 9 }
-        : { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, status: 7, progress: 8, projectTitle: 9, notes: 10, projectNotes: 11 };
+        : extended
+          ? { id: 0, name: 1, assignee: 2, start: 3, end: 4, milestone: 5, dependsOnId: 6, color: 7, status: 8, progress: 9, projectTitle: 10, notes: 11, projectNotes: 12 }
+          : { id: 0, name: 1, start: 2, end: 3, milestone: 4, dependsOnId: 5, color: 6, status: 7, progress: 8, projectTitle: 9, notes: 10, projectNotes: 11 };
     }
 
     const imported = [];
@@ -1541,6 +1683,7 @@
       };
       const idRaw = String(val('id')).trim();
       const nameRaw = String(val('name')).trim();
+      const assigneeRaw = String(val('assignee')).trim();
       const startRaw = String(val('start')).trim();
       const endRaw = String(val('end')).trim();
       const milestoneRaw = String(val('milestone')).trim().toLowerCase();
@@ -1558,6 +1701,7 @@
         name: nameRaw || 'Untitled task',
         start: startRaw,
       };
+      if (assigneeRaw) task.assignee = assigneeRaw;
       if (notesRaw) task.notes = notesRaw;
       if (isMilestone) {
         task.milestone = true;
@@ -1603,12 +1747,13 @@
   function exportCsv() {
     const title = els.projectTitle ? els.projectTitle.value.trim() : '';
     const titleValue = title || 'Project name';
-    const header = ['id','name','start','end','milestone','dependsOnId','color','status','progress','projectTitle','notes','projectNotes'];
+    const header = ['id','name','assignee','start','end','milestone','dependsOnId','color','status','progress','projectTitle','notes','projectNotes'];
     const rows = [header];
     tasks.forEach(t => {
       rows.push([
         t.id,
         t.name,
+        t.assignee || '',
         t.start,
         t.milestone ? '' : (t.end || t.start),
         t.milestone ? 'true' : 'false',
@@ -1926,6 +2071,11 @@
         const selected = opt.value === statusVal ? ' selected' : '';
         return `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
       }).join('');
+      const assigneeLabel = (t.assignee || '').trim();
+      const assigneeHTML = assigneeLabel
+        ? `<span class="assignee-chip" data-assignee="true" title="${escapeHtml(assigneeLabel)}">${escapeHtml(assigneeLabel)}</span>`
+        : '';
+      if (statusVal === 'done') li.classList.add('task-complete');
 
       const curColor = normalizeColor(t.color) || (t.milestone ? DEFAULT_MILESTONE_COLOR : DEFAULT_TASK_COLOR);
       const depOptions = ['<option value="">None</option>'];
@@ -1958,29 +2108,31 @@
 
       li.innerHTML = `
         <div class="relative">
-          <div class="grid items-center px-3 task-row-grid border-b border-gray-100" style="height:${ROW_H}px; gap: 8px;">
+          <div class="grid items-center px-3 task-row-grid border-b border-gray-100" style="height:${ROW_H}px;">
             <div class="text-gray-400 cursor-grab" title="Drag to reorder">≡</div>
             <button type="button" class="swatch-btn" title="Change color" aria-label="Change color" draggable="false">
               <span class="swatch"></span>
             </button>
             <div class="flex items-center gap-2 min-w-0">
               <input class="flex-1 min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
-              <div class="task-meta">
-                <select class="status-select w-28 h-7 text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-status="true" aria-label="Status" draggable="false">${statusOptionsHTML}</select>
-              </div>
-              <div class="task-meta flex items-center gap-1">
-                <input type="number" min="0" max="100" step="1" class="progress-input w-14 h-7 text-xs md:text-sm text-right font-mono text-gray-600 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-progress="true" aria-label="Progress percent" value="${escapeHtml(String(progressVal))}" draggable="false" />
-                <span class="text-[10px] text-gray-400">%</span>
-              </div>
+              ${assigneeHTML}
+            </div>
+            <div class="col-notes flex items-center justify-center">
               <button type="button" class="note-btn ${t.notes && t.notes.trim() ? 'has-notes' : ''}" title="Task notes" aria-label="Task notes" data-task-notes="true" draggable="false">N</button>
+            </div>
+            <input type="date" class="col-start w-full text-right text-xs md:text-sm font-mono text-gray-600 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-start="true" value="${escapeHtml(startVal)}" />
+            ${endCellHTML}
+            <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-dur">${durTxt}</div>
+            <div class="col-progress flex items-center justify-end">
+              <input type="number" min="0" max="100" step="1" class="progress-input w-full h-7 text-xs md:text-sm text-right font-mono text-gray-600 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-progress="true" aria-label="Progress percent" value="${escapeHtml(String(progressVal))}" draggable="false" />
+            </div>
+            <div class="col-status">
+              <select class="status-select w-full h-7 text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-status="true" aria-label="Status" draggable="false">${statusOptionsHTML}</select>
             </div>
             <div class="col-dep flex items-center gap-1">
               <select class="flex-1 text-xs md:text-sm bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-deps="true" aria-label="Depends on">${depOptionsHTML}</select>
               ${depWarnHTML}
             </div>
-            <input type="date" class="col-start w-full text-right text-xs md:text-sm font-mono text-gray-600 bg-white border border-gray-200 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-500" data-start="true" value="${escapeHtml(startVal)}" />
-            ${endCellHTML}
-            <div class="text-right text-xs md:text-sm font-mono text-gray-600 col-dur">${durTxt}</div>
             <button type="button" class="text-gray-400 hover:text-red-600" title="Delete" aria-label="Delete">✕</button>
           </div>
           <div class="palette hidden" role="menu" aria-label="Color palette">
@@ -2012,6 +2164,9 @@
           nameInput.blur();
         }
       });
+      li.addEventListener('click', ()=> setSelectedTask(t.id));
+      li.addEventListener('mouseenter', ()=> { if (!isMobile) setHoverTask(t.id); });
+      li.addEventListener('mouseleave', ()=> { if (!isMobile && hoverTaskId === t.id) setHoverTask(null); });
       const noteBtn = li.querySelector('button[data-task-notes]');
       if (noteBtn) {
         noteBtn.addEventListener(DRAG_START_EVENT, (e)=> e.stopPropagation());
@@ -2261,6 +2416,9 @@
           if (criticalIds.has(t.id)) ms.classList.add('critical-milestone');
           else ms.classList.add('non-critical');
         }
+        ms.addEventListener('click', (ev)=> { ev.stopPropagation(); setSelectedTask(t.id); });
+        ms.addEventListener('mouseenter', ()=> { if (!isMobile) setHoverTask(t.id); });
+        ms.addEventListener('mouseleave', ()=> { if (!isMobile && hoverTaskId === t.id) setHoverTask(null); });
 
         const linkHandle = document.createElement('div');
         linkHandle.className = 'link-handle';
@@ -2290,10 +2448,14 @@
         }
         bar.title = `${t.name} — ${t.start} → ${t.end || t.start} (${progressVal}% ${statusLabel})`;
         bar.dataset.taskId = t.id;
+        if (statusVal === 'done') bar.classList.add('bar-complete');
         if (showCriticalPath) {
           if (criticalIds.has(t.id)) bar.classList.add('critical-bar');
           else bar.classList.add('non-critical');
         }
+        bar.addEventListener('click', (ev)=> { ev.stopPropagation(); setSelectedTask(t.id); });
+        bar.addEventListener('mouseenter', ()=> { if (!isMobile) setHoverTask(t.id); });
+        bar.addEventListener('mouseleave', ()=> { if (!isMobile && hoverTaskId === t.id) setHoverTask(null); });
 
         // Optional label inside the bar (only when there's room)
         const minLabelPx = 120;
@@ -2329,6 +2491,7 @@
 
     const depsLayer = renderDependencies(minD, totalH, gridWidth, rowIndexById, visibleIds);
     if (depsLayer) els.grid.appendChild(depsLayer);
+    updateTaskSelection();
     if (drawerState.open) updateDrawerContent();
   }
 
@@ -2391,6 +2554,7 @@
     if (SUPPORTS_POINTER && ev.isPrimary === false) return;
     const t = tasks.find(x=>x.id===id);
     if (!t) return;
+    setSelectedTask(id);
 
     const x = cursorContentX(ev);
     const elLeftPx = el.offsetLeft;
@@ -2687,6 +2851,20 @@
     });
   }
 
+  if (els.drawerAssigneeInput) {
+    const applyDrawerAssignee = () => {
+      const t = getTaskById(drawerState.taskId);
+      if (!t) return;
+      if (!applyAssigneeInput(t, els.drawerAssigneeInput.value)) return;
+      save();
+      render();
+      updateDrawerContent();
+      commitHistory();
+    };
+    els.drawerAssigneeInput.addEventListener('change', applyDrawerAssignee);
+    els.drawerAssigneeInput.addEventListener('blur', applyDrawerAssignee);
+  }
+
   if (els.drawerStartInput) {
     const applyDrawerStart = () => {
       const t = getTaskById(drawerState.taskId);
@@ -2946,10 +3124,17 @@
   els.centerTodayBtn.addEventListener('click', ()=> scrollToDate(todayUTC(), 'center'));
 
   document.addEventListener('keydown', (e)=>{
-    if (e.key === 'Escape' && drawerState.open) {
-      e.preventDefault();
-      closeDrawer();
-      return;
+    if (e.key === 'Escape') {
+      if (drawerState.open) {
+        e.preventDefault();
+        closeDrawer();
+        return;
+      }
+      if (selectedTaskId) {
+        e.preventDefault();
+        setSelectedTask(null);
+        return;
+      }
     }
     const inField = e.target.closest('input, textarea, select');
     const isMod = e.ctrlKey || e.metaKey;
@@ -2974,6 +3159,14 @@
   const leftPane = document.getElementById('leftPane');
   leftPane.addEventListener('scroll', ()=> { els.rightPane.scrollTop = leftPane.scrollTop; });
   els.rightPane.addEventListener('scroll', ()=> { leftPane.scrollTop = els.rightPane.scrollTop; });
+  leftPane.addEventListener('click', (e)=>{
+    if (e.target.closest('#taskList li')) return;
+    setSelectedTask(null);
+  });
+  els.rightPane.addEventListener('click', (e)=>{
+    if (e.target.closest('.bar, .milestone, .milestone-wrap')) return;
+    setSelectedTask(null);
+  });
 
   // Init
   load();
