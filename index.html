@@ -579,6 +579,14 @@
     const L = 0.2126*srgb[0] + 0.7152*srgb[1] + 0.0722*srgb[2];
     return L > 0.52 ? '#0f172a' : '#ffffff';
   }
+  function isValidHexColor(value) {
+    const s = String(value || '').trim();
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s);
+  }
+  function normalizeColor(value) {
+    const s = String(value || '').trim();
+    return isValidHexColor(s) ? s : '';
+  }
 
   function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
   function saveMeta(meta) {
@@ -821,6 +829,11 @@
       if (typeof out.name !== 'string') out.name = 'Untitled task';
       if (out.dependsOnId && typeof out.dependsOnId !== 'string') delete out.dependsOnId;
       if (out.notes != null && typeof out.notes !== 'string') out.notes = String(out.notes);
+      if (out.color) {
+        const normalized = normalizeColor(out.color);
+        if (normalized) out.color = normalized;
+        else delete out.color;
+      }
       const startRaw = toDateSafe(out.start);
       const endRaw = toDateSafe(out.end);
       const baseStart = startRaw || endRaw || todayUTC();
@@ -854,7 +867,11 @@
         delete t.dependsOnId;
         return;
       }
-      if (!ids.has(t.dependsOnId) || t.dependsOnId === t.id) delete t.dependsOnId;
+      if (!ids.has(t.dependsOnId) || t.dependsOnId === t.id) {
+        delete t.dependsOnId;
+        return;
+      }
+      if (wouldCreateCycle(t.dependsOnId, t.id)) delete t.dependsOnId;
     });
   }
 
@@ -1161,8 +1178,26 @@
     }
   }
 
+  function findTaskRow(taskId) {
+    if (!taskId) return null;
+    const items = document.querySelectorAll('#taskList li');
+    for (const li of items) {
+      if (li.dataset.taskId === taskId) return li;
+    }
+    return null;
+  }
+
+  function findGanttItem(taskId) {
+    if (!taskId || !els.grid) return null;
+    const items = els.grid.querySelectorAll('[data-id]');
+    for (const el of items) {
+      if (el.dataset.id === taskId) return el;
+    }
+    return null;
+  }
+
   function updateTaskNoteBadge(taskId) {
-    const li = document.querySelector(`#taskList li[data-task-id="${taskId}"]`);
+    const li = findTaskRow(taskId);
     if (!li) return;
     const btn = li.querySelector('.note-btn');
     if (!btn) return;
@@ -1173,14 +1208,16 @@
 
   function updateDependencyLabels(t) {
     const label = (t.name || '').trim() || 'Untitled task';
-    document.querySelectorAll(`select[data-deps] option[value="${t.id}"]`).forEach(opt => {
-      opt.textContent = label;
+    document.querySelectorAll('select[data-deps]').forEach(select => {
+      for (const opt of select.options) {
+        if (opt.value === t.id) opt.textContent = label;
+      }
     });
   }
 
   function updateTaskNameInGantt(t) {
     if (!els.grid) return;
-    const el = els.grid.querySelector(`[data-id="${t.id}"]`);
+    const el = findGanttItem(t.id);
     if (!el) return;
     if (t.milestone) {
       el.title = `${t.name} — ${t.start}`;
@@ -1610,14 +1647,17 @@
   function highlightLinkTarget(targetId) {
     document.querySelectorAll('#taskList li.link-target').forEach(el => el.classList.remove('link-target'));
     if (!targetId) return;
-    const li = document.querySelector(`#taskList li[data-task-id="${targetId}"]`);
+    const li = findTaskRow(targetId);
     if (li) li.classList.add('link-target');
   }
 
   function wouldCreateCycle(predId, taskId) {
     let cur = predId;
+    const seen = new Set();
     while (cur) {
       if (cur === taskId) return true;
+      if (seen.has(cur)) return false;
+      seen.add(cur);
       const t = getTaskById(cur);
       cur = t && t.dependsOnId ? t.dependsOnId : null;
     }
@@ -1770,7 +1810,7 @@
       const durBiz = t.milestone ? null : businessDaysInclusive(s, e);
       const durTxt = t.milestone ? '—' : `${durBiz}d`;
 
-      const curColor = t.color || (t.milestone ? DEFAULT_MILESTONE_COLOR : DEFAULT_TASK_COLOR);
+      const curColor = normalizeColor(t.color) || (t.milestone ? DEFAULT_MILESTONE_COLOR : DEFAULT_TASK_COLOR);
       const depOptions = ['<option value="">None</option>'];
       let hasCurrent = false;
       const tIndex = taskIndexById.get(t.id);
@@ -1804,7 +1844,7 @@
           <div class="grid items-center px-3 task-row-grid border-b border-gray-100" style="height:${ROW_H}px; gap: 8px;">
             <div class="text-gray-400 cursor-grab" title="Drag to reorder">≡</div>
             <button type="button" class="swatch-btn" title="Change color" aria-label="Change color" draggable="false">
-              <span class="swatch" style="background:${curColor}"></span>
+              <span class="swatch"></span>
             </button>
             <div class="flex items-center gap-2 min-w-0">
               <input class="flex-1 min-w-0 bg-transparent outline-none text-sm md:text-base task-name" />
@@ -1824,6 +1864,9 @@
             <div class="palette-grid">${paletteDotsHTML}</div>
           </div>
         </div>`;
+
+      const swatch = li.querySelector('.swatch');
+      if (swatch) swatch.style.background = curColor;
 
       const nameInput = li.querySelector('.task-name');
       nameInput.value = t.name;
@@ -1912,7 +1955,13 @@
       });
       const depSelect = li.querySelector('select[data-deps]');
       depSelect.addEventListener('change', (e)=>{
-        t.dependsOnId = e.target.value || undefined;
+        const nextId = e.target.value || '';
+        if (nextId && wouldCreateCycle(nextId, t.id)) {
+          alert('That link would create a dependency cycle.');
+          e.target.value = t.dependsOnId || '';
+          return;
+        }
+        t.dependsOnId = nextId || undefined;
         applyDependencies();
         save();
         render();
@@ -1932,7 +1981,9 @@
         e.stopPropagation();
         const dot = e.target.closest('.palette-dot');
         if (!dot) return;
-        t.color = dot.dataset.color;
+        const nextColor = normalizeColor(dot.dataset.color);
+        if (nextColor) t.color = nextColor;
+        else delete t.color;
         save();
         render();
         commitHistory();
@@ -2036,7 +2087,8 @@
         ms.className = 'milestone';
         ms.style.left = '0px';
         ms.style.top = '0px';
-        ms.style.background = t.color || DEFAULT_MILESTONE_COLOR;
+        const msColor = normalizeColor(t.color) || DEFAULT_MILESTONE_COLOR;
+        ms.style.background = msColor;
         ms.title = `${t.name} — ${t.start}`;
         ms.dataset.id = t.id;
         ms.dataset.taskId = t.id;
@@ -2061,7 +2113,7 @@
         bar.style.top = (yBase + (ROW_H-24)/2) + 'px';
         bar.style.height = '24px';
         bar.style.width = w + 'px';
-        const bg = t.color || DEFAULT_TASK_COLOR;
+        const bg = normalizeColor(t.color) || DEFAULT_TASK_COLOR;
         bar.style.background = bg;
         bar.title = `${t.name} — ${t.start} → ${t.end || t.start}`;
         bar.dataset.taskId = t.id;
@@ -2490,7 +2542,13 @@
     els.drawerDepSelect.addEventListener('change', ()=>{
       const t = getTaskById(drawerState.taskId);
       if (!t) return;
-      t.dependsOnId = els.drawerDepSelect.value || undefined;
+      const nextId = els.drawerDepSelect.value || '';
+      if (nextId && wouldCreateCycle(nextId, t.id)) {
+        alert('That link would create a dependency cycle.');
+        els.drawerDepSelect.value = t.dependsOnId || '';
+        return;
+      }
+      t.dependsOnId = nextId || undefined;
       applyDependencies();
       save();
       render();
