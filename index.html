@@ -185,6 +185,14 @@
 
     /* Left pane: keep Task name visible when narrowing */
     .task-row-grid { grid-template-columns: 20px 26px minmax(140px, 1fr) var(--col-dep) var(--col-start) var(--col-end) var(--col-dur) 28px; }
+    .task-row-grid > :nth-child(1) { grid-column: 1; }
+    .task-row-grid > :nth-child(2) { grid-column: 2; }
+    .task-row-grid > :nth-child(3) { grid-column: 3; }
+    .task-row-grid > :nth-child(4) { grid-column: 4; }
+    .task-row-grid > :nth-child(5) { grid-column: 5; }
+    .task-row-grid > :nth-child(6) { grid-column: 6; }
+    .task-row-grid > :nth-child(7) { grid-column: 7; }
+    .task-row-grid > :nth-child(8) { grid-column: 8; }
 
     body.left-hide-dur { --col-dur: 0px; }
     body.left-hide-end { --col-end: 0px; }
@@ -199,6 +207,11 @@
     .task-name { min-width: 0; }
     .col-dep { min-width: 0; }
     .col-dep select { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    input.col-start,
+    input.col-end {
+      min-width: 0;
+      max-width: 100%;
+    }
   </style>
 </head>
 <body class="bg-gray-50 text-gray-900">
